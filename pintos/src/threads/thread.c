@@ -11,6 +11,8 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "threads/ready-list.h"
+
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -23,9 +25,6 @@
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
-
-/* New ready list based on priority. */
-static struct list priority_ready_list;
 
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
@@ -52,6 +51,8 @@ struct kernel_thread_frame
 static long long idle_ticks;    /* # of timer ticks spent idle. */
 static long long kernel_ticks;  /* # of timer ticks in kernel threads. */
 static long long user_ticks;    /* # of timer ticks in user programs. */
+static int load_avg UNUSED;
+static int load_avg_coefficient UNUSED;
 
 /* Scheduling. */
 #define TIME_SLICE 4            /* # of timer ticks to give each thread. */
@@ -61,6 +62,7 @@ static unsigned thread_ticks;   /* # of timer ticks since last yield. */
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 bool thread_mlfqs;
+
 
 static void kernel_thread (thread_func *, void *aux);
 
@@ -94,6 +96,7 @@ thread_init (void)
 
   lock_init (&tid_lock);
   list_init (&ready_list);
+  ready_list_init ();
   list_init (&all_list);
 
   /* Set up a thread structure for the running thread. */
@@ -349,36 +352,54 @@ thread_get_priority (void)
   return thread_current ()->priority;
 }
 
-/* Sets the current thread's nice value to NICE. */
+/* Recalculates the current thread's priority. */
 void
-thread_set_nice (int nice UNUSED) 
+thread_calculate_priority (void)
 {
   /* Not yet implemented. */
+}
+
+/* Sets the current thread's nice value to NICE. */
+void
+thread_set_nice (int nice) 
+{
+  thread_current ()->nice = nice;
 }
 
 /* Returns the current thread's nice value. */
 int
 thread_get_nice (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  return thread_current ()->nice;
 }
 
 /* Returns 100 times the system load average. */
 int
 thread_get_load_avg (void) 
 {
+  return (100 * load_avg);
+}
+
+void
+thread_calculate_load_avg (void)
+{
   /* Not yet implemented. */
-  return 0;
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  return (100 * thread_current ()->recent_cpu);
 }
+
+void
+thread_calculate_recent_cpu (void)
+{
+  /* Not yet implemented. */
+}
+
+
 
 /* Idle thread.  Executes when no other thread is ready to run.
 
@@ -570,86 +591,6 @@ schedule (void)
   thread_schedule_tail (prev);
  
   timer_broadcast ();
-}
-
-void 
-ready_list_init (void)
-{
-  list_init (&priority_ready_list);
-  int i = 0;
-  for (i = 0; i< 64; i++){
-    struct list priority_list;
-    list_init (&priority_list);
-    list_push_back (&priority_ready_list, &(&priority_list)->head);
-  }
-}
-
-/* Adds a thread to the ready list. Uses the thread's priority to place the
-   element in the correct list. */
-void
-ready_list_push_back (struct list_elem *e, int priority)
-{
-  // TODO(elizabeth): Throw errors if < PRI_MIN or > PRI_MAX
-  int i = 0;
-  for (e = list_begin (&priority_ready_list); 
-       e != list_end (&priority_ready_list); e = list_next(e))
-  {
-    if (i == priority)
-    {
-      struct list *priority_list = list_entry (e, struct list, head);
-      list_push_back(priority_list, &thread_current()->allelem);
-      return;
-    }
-    i++;
-  }
-}
-
-/* Removes a thread from the ready list. Uses the thread's priority to remove
-   the element from the correct list. */
-void
-ready_list_remove (struct list_elem *e, int priority)
-{
-  list_remove (&thread_current()->allelem);
-}
-
-/* Pops a thread from the the highest priority list that contains a thread. */
-struct thread *
-ready_list_pop_front (void)
-{
- struct list_elem *e;
-  for (e = list_begin (&priority_ready_list); 
-       e != list_end (&priority_ready_list); e = list_next(e))
-  {
-    {
-      struct list *priority_list = list_entry (e, struct list, head);
-      if (!list_empty (priority_list))
-      {
-        return list_entry (list_pop_front (priority_list), 
-          struct thread, elem);
-      }
-    }
-  }
-  return NULL;
-  // TODO(elizabeth): throw an error 
-}
-
-/* Returns a boolean detailing whether the ready list is empty. Iterates
-    through the priority ready lists of ready lists to check whether each list
-    is empty. If so returns false, else returns true. */
-bool
-ready_list_empty (void)
-{
-  struct list_elem *e;
-  for (e = list_begin (&priority_ready_list); 
-       e != list_end (&priority_ready_list); e = list_next(e))
-  {
-    {
-      struct list *priority_list = list_entry (e, struct list, head);
-      if (!list_empty (priority_list))
-        return false;
-    }
-  }
-  return true;
 }
 
 /* Returns a tid to use for a new thread. */
