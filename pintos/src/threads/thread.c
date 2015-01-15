@@ -24,6 +24,9 @@
    that are ready to run but not actually running. */
 static struct list ready_list;
 
+/* New ready list based on priority. */
+static struct list priority_ready_list;
+
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
 static struct list all_list;
@@ -567,6 +570,86 @@ schedule (void)
   thread_schedule_tail (prev);
  
   timer_broadcast ();
+}
+
+void 
+ready_list_init (void)
+{
+  list_init (&priority_ready_list);
+  int i = 0;
+  for (i = 0; i< 64; i++){
+    struct list priority_list;
+    list_init (&priority_list);
+    list_push_back (&priority_ready_list, &(&priority_list)->head);
+  }
+}
+
+/* Adds a thread to the ready list. Uses the thread's priority to place the
+   element in the correct list. */
+void
+ready_list_push_back (struct list_elem *e, int priority)
+{
+  // TODO(elizabeth): Throw errors if < PRI_MIN or > PRI_MAX
+  int i = 0;
+  for (e = list_begin (&priority_ready_list); 
+       e != list_end (&priority_ready_list); e = list_next(e))
+  {
+    if (i == priority)
+    {
+      struct list *priority_list = list_entry (e, struct list, head);
+      list_push_back(priority_list, &thread_current()->allelem);
+      return;
+    }
+    i++;
+  }
+}
+
+/* Removes a thread from the ready list. Uses the thread's priority to remove
+   the element from the correct list. */
+void
+ready_list_remove (struct list_elem *e, int priority)
+{
+  list_remove (&thread_current()->allelem);
+}
+
+/* Pops a thread from the the highest priority list that contains a thread. */
+struct thread *
+ready_list_pop_front (void)
+{
+ struct list_elem *e;
+  for (e = list_begin (&priority_ready_list); 
+       e != list_end (&priority_ready_list); e = list_next(e))
+  {
+    {
+      struct list *priority_list = list_entry (e, struct list, head);
+      if (!list_empty (priority_list))
+      {
+        return list_entry (list_pop_front (priority_list), 
+          struct thread, elem);
+      }
+    }
+  }
+  return NULL;
+  // TODO(elizabeth): throw an error 
+}
+
+/* Returns a boolean detailing whether the ready list is empty. Iterates
+    through the priority ready lists of ready lists to check whether each list
+    is empty. If so returns false, else returns true. */
+bool
+ready_list_empty (void)
+{
+  struct list_elem *e;
+  for (e = list_begin (&priority_ready_list); 
+       e != list_end (&priority_ready_list); e = list_next(e))
+  {
+    {
+      struct list *priority_list = list_entry (e, struct list, head);
+      if (!list_empty (priority_list))
+        return false;
+    }
+  }
+  return true;
 }
 
 /* Returns a tid to use for a new thread. */
