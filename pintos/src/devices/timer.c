@@ -112,7 +112,7 @@ timer_sleep (int64_t ticks)
 
   lock_acquire (&timer_lock);  
   while (timer_elapsed (start) < ticks)
-      cond_wait (&timer_cond, &timer_lock);
+    cond_wait (&timer_cond, &timer_lock);
   lock_release (&timer_lock);
 }
 
