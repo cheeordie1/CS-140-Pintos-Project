@@ -2,10 +2,15 @@
 #include <stdint.h>
 #include <stdio.h>
 
+<<<<<<< HEAD
 #define DECMASK (~(0xffffffff << 14))
 
 int get_int (fp x);
 int get_dec (fp x);
+=======
+#define INTMASK ((2**17) | (0x0000ffff << 14))
+#define DECMASK ((2**14) | (2**13) | 0x00000fff)
+>>>>>>> 94de177f143cfa51140994a8655c88f99410d90e
 
 int t_1 = 50;
 int t_2 = 25;
@@ -17,13 +22,21 @@ int t_6 = -6;
 int
 get_int (fp x)
 {
+<<<<<<< HEAD
 return x >> 14;
+=======
+  return x < 0 ? -((int)((x & INTMASK) >> 14)) : ((int)((x & INTMASK) >> 14));
+>>>>>>> 94de177f143cfa51140994a8655c88f99410d90e
 }
 
 int
 get_dec (fp x)
 {
+<<<<<<< HEAD
 return x & DECMASK; /* This does not read the decimal back correctly, but everything works */
+=======
+  return x < 0 ? -((int)(x & DECMASK)) : (int)(x & DECMASK);
+>>>>>>> 94de177f143cfa51140994a8655c88f99410d90e
 }
 
 int
