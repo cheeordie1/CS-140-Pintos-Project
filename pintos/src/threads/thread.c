@@ -4,6 +4,7 @@
 #include <random.h>
 #include <stdio.h>
 #include <string.h>
+#include "devices/timer.h"
 #include "threads/flags.h"
 #include "threads/interrupt.h"
 #include "threads/intr-stubs.h"
@@ -74,6 +75,9 @@ static bool is_thread (struct thread *) UNUSED;
 static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
+int thread_calculate_priority (void);
+int thread_calculate_load_avg (void);
+int thread_calculate_recent_cpu (void);
 static tid_t allocate_tid (void);
 
 /* Initializes the threading system by transforming the code
@@ -96,7 +100,7 @@ thread_init (void)
 
   lock_init (&tid_lock);
   list_init (&ready_list);
-  ready_list_init ();
+//  ready_list_init ();
   list_init (&all_list);
 
   /* Set up a thread structure for the running thread. */
@@ -353,24 +357,27 @@ thread_get_priority (void)
 }
 
 /* Recalculates the current thread's priority. */
-void
+int
 thread_calculate_priority (void)
 {
   /* Not yet implemented. */
+  return 0;
 }
 
 /* Sets the current thread's nice value to NICE. */
 void
 thread_set_nice (int nice) 
 {
-  thread_current ()->nice = nice;
+//  thread_current ()->nice = nice;
+  nice = nice;
 }
 
 /* Returns the current thread's nice value. */
 int
 thread_get_nice (void) 
 {
-  return thread_current ()->nice;
+//  return thread_current ()->nice;
+  return 0;
 }
 
 /* Returns 100 times the system load average. */
@@ -380,26 +387,27 @@ thread_get_load_avg (void)
   return (100 * load_avg);
 }
 
-void
+int
 thread_calculate_load_avg (void)
 {
   /* Not yet implemented. */
+  return 0;
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu (void) 
 {
-  return (100 * thread_current ()->recent_cpu);
+//  return (100 * thread_current ()->recent_cpu);
+  return 0;
 }
 
-void
+int
 thread_calculate_recent_cpu (void)
 {
   /* Not yet implemented. */
+  return 0;
 }
-
-
 
 /* Idle thread.  Executes when no other thread is ready to run.
 
