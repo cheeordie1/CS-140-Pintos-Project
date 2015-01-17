@@ -4,6 +4,7 @@
 #include <random.h>
 #include <stdio.h>
 #include <string.h>
+#include "devices/timer.h"
 #include "threads/flags.h"
 #include "threads/interrupt.h"
 #include "threads/intr-stubs.h"
@@ -11,7 +12,8 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
-#include "threads/ready-list.h"
+#include "threads/plist.h"
+#include "threads/fixed-point.h"
 
 #ifdef USERPROG
 #include "userprog/process.h"
@@ -24,7 +26,7 @@
 
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
-static struct list ready_list;
+static struct priority_list ready_list;
 
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
@@ -63,7 +65,6 @@ static unsigned thread_ticks;   /* # of timer ticks since last yield. */
    Controlled by kernel command-line option "-o mlfqs". */
 bool thread_mlfqs;
 
-
 static void kernel_thread (thread_func *, void *aux);
 
 static void idle (void *aux UNUSED);
@@ -74,6 +75,9 @@ static bool is_thread (struct thread *) UNUSED;
 static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
+int thread_calculate_priority (void);
+int thread_calculate_load_avg (void);
+int thread_calculate_recent_cpu (void);
 static tid_t allocate_tid (void);
 
 /* Initializes the threading system by transforming the code
@@ -95,8 +99,7 @@ thread_init (void)
   ASSERT (intr_get_level () == INTR_OFF);
 
   lock_init (&tid_lock);
-  list_init (&ready_list);
-  ready_list_init ();
+  plist_init (&ready_list);
   list_init (&all_list);
 
   /* Set up a thread structure for the running thread. */
@@ -359,24 +362,27 @@ thread_get_priority (void)
 }
 
 /* Recalculates the current thread's priority. */
-void
+int
 thread_calculate_priority (void)
 {
   /* Not yet implemented. */
+  return 0;
 }
 
 /* Sets the current thread's nice value to NICE. */
 void
 thread_set_nice (int nice) 
 {
-  thread_current ()->nice = nice;
+//  thread_current ()->nice = nice;
+  nice = nice;
 }
 
 /* Returns the current thread's nice value. */
 int
 thread_get_nice (void) 
 {
-  return thread_current ()->nice;
+//  return thread_current ()->nice;
+  return 0;
 }
 
 /* Returns 100 times the system load average. */
@@ -386,26 +392,30 @@ thread_get_load_avg (void)
   return (100 * load_avg);
 }
 
-void
+int
 thread_calculate_load_avg (void)
 {
   /* Not yet implemented. */
+  return 0;
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu (void) 
 {
-  return (100 * thread_current ()->recent_cpu);
+//  return (100 * thread_current ()->recent_cpu);
+  return 0;
 }
 
-void
+int
 thread_calculate_recent_cpu (void)
 {
   thread_action_func * t_func = t_calculate_recent_cpu;
   /* Not yet implemented. */
+  return 0;
 }
 
+<<<<<<< HEAD
 void
 t_calculate_recent_cpu (thread* t){
 
@@ -413,6 +423,8 @@ t_calculate_recent_cpu (thread* t){
 
 
 
+=======
+>>>>>>> 114a364f72c4d166bfad79db80fdf1990d4750ef
 /* Idle thread.  Executes when no other thread is ready to run.
 
    The idle thread is initially put on the ready list by
