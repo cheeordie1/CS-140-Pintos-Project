@@ -338,6 +338,12 @@ thread_foreach (thread_action_func *func, void *aux)
     }
 }
 
+void 
+thread_action_func (struct thread *t, void *aux)
+{
+
+}
+
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) 
@@ -396,7 +402,13 @@ thread_get_recent_cpu (void)
 void
 thread_calculate_recent_cpu (void)
 {
+  thread_action_func * t_func = t_calculate_recent_cpu;
   /* Not yet implemented. */
+}
+
+void
+t_calculate_recent_cpu (thread* t){
+
 }
 
 
