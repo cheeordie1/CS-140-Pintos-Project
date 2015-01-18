@@ -27,6 +27,7 @@
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct priority_list ready_list;
+//static struct list ready_list;
 
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
@@ -75,9 +76,6 @@ static bool is_thread (struct thread *) UNUSED;
 static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
-int thread_calculate_priority (void);
-int thread_calculate_load_avg (void);
-int thread_calculate_recent_cpu (void);
 static tid_t allocate_tid (void);
 
 /* Initializes the threading system by transforming the code
@@ -246,7 +244,7 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem);
+  plist_push_back (&ready_list, &t->elem);
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -300,7 +298,7 @@ thread_exit (void)
      and schedule another process.  That process will destroy us
      when it calls thread_schedule_tail(). */
   intr_disable ();
-  list_remove (&thread_current()->allelem);
+  plist_remove (&thread_current()->allelem);
   thread_current ()->status = THREAD_DYING;
   schedule ();
   NOT_REACHED ();
@@ -318,7 +316,7 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    list_push_back (&ready_list, &cur->elem);
+    plist_push_back (&ready_list, &cur->elem);
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -362,10 +360,24 @@ thread_get_priority (void)
 }
 
 /* Recalculates the current thread's priority. */
-int
+void
 thread_calculate_priority (void)
 {
-  /* Not yet implemented. */
+  /* new_priority = PRI_MAX - (recent_cpu / 4) - (nice * 2).
+     fp = recent_cpu, int = priority & nice */
+
+  /* Calculates recent_cpu / 4 */
+  fp quarter_cpu = div_fpn (conv_itofp (thread_current ()->recent_cpu), 4);
+  
+  /* Calculates  (PRI_MAX - (recent_cpu / 4)) */
+  fp sub1 = sub_fpfp (conv_itofp(PRI_MAX), quarter_cpu);
+
+  /* Calculates (PRI_MAX - (recent_cpu /4)) - (nice*2) */
+  fp new_priority = sub_fpn (sub1, (thread_current ()->nice * 2));
+
+  /* Change priority */
+  thread_set_priority(rzconv_fptoi (new_priority));
+
   return 0;
 }
 
@@ -373,16 +385,14 @@ thread_calculate_priority (void)
 void
 thread_set_nice (int nice) 
 {
-//  thread_current ()->nice = nice;
-  nice = nice;
+ thread_current ()->nice = nice;
 }
 
 /* Returns the current thread's nice value. */
 int
 thread_get_nice (void) 
 {
-//  return thread_current ()->nice;
-  return 0;
+  return thread_current ()->nice;
 }
 
 /* Returns 100 times the system load average. */
@@ -392,10 +402,20 @@ thread_get_load_avg (void)
   return (100 * load_avg);
 }
 
-int
+void
 thread_calculate_load_avg (void)
 {
-  /* Not yet implemented. */
+ fp product1 = mult_fpfp(div_fpn(conv_itofp(59), 60), conv_itofp(load_avg));
+ fp product2 = mult_fpfp(div_fpn(conv_itofp(1), 60), 
+  conv_itofp(plist_size(&ready_list)));
+
+ fp load_avg_fp = add_fpfp (product1, product2);
+ fp load_avg_coefficient_fp = div_fpfp (mult_fpn (load_avg_fp, 2), 
+   add_fpn (mult_fpn (load_avg_fp, 2), 1));
+
+ load_avg = rnconv_fptoi (load_avg_fp);
+ load_avg_coefficient = rnconv_fptoi (load_avg_coefficient_fp);
+
   return 0;
 }
 
@@ -403,28 +423,21 @@ thread_calculate_load_avg (void)
 int
 thread_get_recent_cpu (void) 
 {
-//  return (100 * thread_current ()->recent_cpu);
-  return 0;
+ return (100 * thread_current ()->recent_cpu);
 }
 
 int
 thread_calculate_recent_cpu (void)
 {
-  thread_action_func * t_func = t_calculate_recent_cpu;
-  /* Not yet implemented. */
+  thread_calculate_load_avg();
+  fp product = mult_fpfp(conv_itofp(load_avg_coefficient,
+   conv_itofp(thread_current ()->recent_cpu));
+  fp sum = add_fpn(product, thread_current ()->nice);
+  thread_current ()->recent_cpu = rnconv_fptoi(sum);
+
   return 0;
 }
 
-<<<<<<< HEAD
-void
-t_calculate_recent_cpu (thread* t){
-
-}
-
-
-
-=======
->>>>>>> 114a364f72c4d166bfad79db80fdf1990d4750ef
 /* Idle thread.  Executes when no other thread is ready to run.
 
    The idle thread is initially put on the ready list by
