@@ -13,14 +13,16 @@
 struct priority_list
   {
     struct list pl_buckets[PRI_MAX + 1];
+    int size;
   };
 
 void plist_init (struct priority_list *pl);
 void plist_push_back (struct priority_list *pl, struct list_elem *e, int priority);
-void plist_remove (struct list_elem *e);
+void plist_remove (struct priority_list *pl, struct list_elem *e);
 struct list_elem *plist_pop_front (struct priority_list *pl);
 int plist_top_priority (struct priority_list *pl);
 bool plist_empty (struct priority_list *pl);
+int plist_size (struct priority_list *pl);
 
 #endif /* threads/ready-list.h */
 

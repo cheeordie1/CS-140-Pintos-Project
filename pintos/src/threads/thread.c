@@ -244,9 +244,15 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  plist_push_back (&ready_list, &t->elem);
+  plist_push_back (&ready_list, &t->elem, t->priority);
   t->status = THREAD_READY;
+  
+  if (thread_current ()-> priority < t->priority && old_level == INTR_OFF && t != idle_thread) {
+  
+   thread_yield ();
+  }
   intr_set_level (old_level);
+  //thread_yield ();
 }
 
 /* Returns the name of the running thread. */
@@ -298,7 +304,7 @@ thread_exit (void)
      and schedule another process.  That process will destroy us
      when it calls thread_schedule_tail(). */
   intr_disable ();
-  plist_remove (&thread_current()->allelem);
+  plist_remove (&ready_list, &thread_current()->allelem);
   thread_current ()->status = THREAD_DYING;
   schedule ();
   NOT_REACHED ();
@@ -316,7 +322,7 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    plist_push_back (&ready_list, &cur->elem);
+    plist_push_back (&ready_list, &cur->elem, cur->priority);
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -339,33 +345,27 @@ thread_foreach (thread_action_func *func, void *aux)
     }
 }
 
-void 
-thread_action_func (struct thread *t, void *aux)
-{
-
-}
 
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
-thread_set_priority (int new_priority) 
+thread_set_priority (int new_priority)
 {
   thread_current ()->priority = new_priority;
 }
 
 /* Returns the current thread's priority. */
 int
-thread_get_priority (void) 
+thread_get_priority (void)
 {
   return thread_current ()->priority;
 }
 
 /* Recalculates the current thread's priority. */
-void
+int
 thread_calculate_priority (void)
 {
   /* new_priority = PRI_MAX - (recent_cpu / 4) - (nice * 2).
      fp = recent_cpu, int = priority & nice */
-
   /* Calculates recent_cpu / 4 */
   fp quarter_cpu = div_fpn (conv_itofp (thread_current ()->recent_cpu), 4);
   
@@ -383,26 +383,27 @@ thread_calculate_priority (void)
 
 /* Sets the current thread's nice value to NICE. */
 void
-thread_set_nice (int nice) 
+thread_set_nice (int nice)
 {
  thread_current ()->nice = nice;
 }
 
+
 /* Returns the current thread's nice value. */
 int
-thread_get_nice (void) 
+thread_get_nice (void)
 {
   return thread_current ()->nice;
 }
 
 /* Returns 100 times the system load average. */
 int
-thread_get_load_avg (void) 
+thread_get_load_avg (void)
 {
   return (100 * load_avg);
 }
 
-void
+int
 thread_calculate_load_avg (void)
 {
  fp product1 = mult_fpfp(div_fpn(conv_itofp(59), 60), conv_itofp(load_avg));
@@ -421,7 +422,7 @@ thread_calculate_load_avg (void)
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
-thread_get_recent_cpu (void) 
+thread_get_recent_cpu (void)
 {
  return (100 * thread_current ()->recent_cpu);
 }
@@ -430,7 +431,7 @@ int
 thread_calculate_recent_cpu (void)
 {
   thread_calculate_load_avg();
-  fp product = mult_fpfp(conv_itofp(load_avg_coefficient,
+  fp product = mult_fpfp(conv_itofp(load_avg_coefficient),
    conv_itofp(thread_current ()->recent_cpu));
   fp sum = add_fpn(product, thread_current ()->nice);
   thread_current ()->recent_cpu = rnconv_fptoi(sum);
@@ -553,10 +554,10 @@ alloc_frame (struct thread *t, size_t size)
 static struct thread *
 next_thread_to_run (void) 
 {
-  if (list_empty (&ready_list))
+  if (plist_empty (&ready_list))
       return idle_thread;
   else
-    return list_entry (list_pop_front (&ready_list), struct thread, elem);
+    return list_entry (plist_pop_front (&ready_list), struct thread, elem);
 }
 
 /* Completes a thread switch by activating the new thread's page
@@ -643,7 +644,7 @@ allocate_tid (void)
 
   return tid;
 }
-
+
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
