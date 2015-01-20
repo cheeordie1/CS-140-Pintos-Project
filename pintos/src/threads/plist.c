@@ -59,18 +59,9 @@ plist_pop_front (struct priority_list *pl)
 bool
 plist_empty (struct priority_list *pl)
 {
-
   ASSERT (pl != NULL);
-int curr_b;
-for (curr_b = 0; curr_b <= PRI_MAX; curr_b++)
-{
-if (!list_empty (&pl->pl_buckets[curr_b]))
-return false;
-}
-return true;
-  // ASSERT (pl != NULL);  
-  // if (pl->size == 0) return true;
-  // return false;
+
+  return pl->size == 0;
 }
 
 /* Return the highest priority of any element in the priority list. */
