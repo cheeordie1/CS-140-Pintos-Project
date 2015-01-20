@@ -24,9 +24,12 @@
    of thread.h for details. */
 #define THREAD_MAGIC 0xcd6abf4b
 
+int TIMES = 0;
+
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct priority_list ready_list;
+//static struct list ready_list;
 
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
@@ -75,9 +78,6 @@ static bool is_thread (struct thread *) UNUSED;
 static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
-int thread_calculate_priority (void);
-int thread_calculate_load_avg (void);
-int thread_calculate_recent_cpu (void);
 static tid_t allocate_tid (void);
 
 /* Initializes the threading system by transforming the code
@@ -209,7 +209,8 @@ thread_create (const char *name, int priority,
 
   /* Add to run queue. */
   thread_unblock (t);
-
+   if(thread_current ()->priority < t->priority) 
+     thread_yield ();
   return tid;
 }
 
@@ -300,7 +301,7 @@ thread_exit (void)
      and schedule another process.  That process will destroy us
      when it calls thread_schedule_tail(). */
   intr_disable ();
-  list_remove (&thread_current()->allelem);
+  plist_remove (&ready_list, &thread_current()->allelem);
   thread_current ()->status = THREAD_DYING;
   schedule ();
   NOT_REACHED ();
@@ -341,6 +342,7 @@ thread_foreach (thread_action_func *func, void *aux)
     }
 }
 
+
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority)
@@ -363,12 +365,16 @@ thread_calculate_priority (void)
      fp = recent_cpu, int = priority & nice */
   /* Calculates recent_cpu / 4 */
   fp quarter_cpu = div_fpn (conv_itofp (thread_current ()->recent_cpu), 4);
-  /* Calculates (PRI_MAX - (recent_cpu / 4)) */
+  
+  /* Calculates  (PRI_MAX - (recent_cpu / 4)) */
   fp sub1 = sub_fpfp (conv_itofp(PRI_MAX), quarter_cpu);
+
   /* Calculates (PRI_MAX - (recent_cpu /4)) - (nice*2) */
   fp new_priority = sub_fpn (sub1, (thread_current ()->nice * 2));
+
   /* Change priority */
   thread_set_priority(rzconv_fptoi (new_priority));
+
   return 0;
 }
 
@@ -376,7 +382,7 @@ thread_calculate_priority (void)
 void
 thread_set_nice (int nice)
 {
-  thread_current ()->nice = nice;
+ thread_current ()->nice = nice;
 }
 
 
@@ -397,14 +403,17 @@ thread_get_load_avg (void)
 int
 thread_calculate_load_avg (void)
 {
-  fp product1 = mult_fpfp(div_fpn(conv_itofp(59), 60), conv_itofp(load_avg));
-  fp product2 = mult_fpfp(div_fpn(conv_itofp(1), 60),
+ fp product1 = mult_fpfp(div_fpn(conv_itofp(59), 60), conv_itofp(load_avg));
+ fp product2 = mult_fpfp(div_fpn(conv_itofp(1), 60), 
   conv_itofp(plist_size(&ready_list)));
-  fp load_avg_fp = add_fpfp (product1, product2);
-  fp load_avg_coefficient_fp = div_fpfp (mult_fpn (load_avg_fp, 2),
-  add_fpn (mult_fpn (load_avg_fp, 2), 1));
-  load_avg = rnconv_fptoi (load_avg_fp);
-  load_avg_coefficient = rnconv_fptoi (load_avg_coefficient_fp);
+
+ fp load_avg_fp = add_fpfp (product1, product2);
+ fp load_avg_coefficient_fp = div_fpfp (mult_fpn (load_avg_fp, 2), 
+   add_fpn (mult_fpn (load_avg_fp, 2), 1));
+
+ load_avg = rnconv_fptoi (load_avg_fp);
+ load_avg_coefficient = rnconv_fptoi (load_avg_coefficient_fp);
+
   return 0;
 }
 
@@ -412,17 +421,18 @@ thread_calculate_load_avg (void)
 int
 thread_get_recent_cpu (void)
 {
-  return (100 * thread_current ()->recent_cpu);
+ return (100 * thread_current ()->recent_cpu);
 }
 
 int
 thread_calculate_recent_cpu (void)
 {
   thread_calculate_load_avg();
-  fp product = mult_fpfp(conv_itofp(load_avg_coefficient,
-  conv_itofp(thread_current ()->recent_cpu));
+  fp product = mult_fpfp(conv_itofp(load_avg_coefficient),
+   conv_itofp(thread_current ()->recent_cpu));
   fp sum = add_fpn(product, thread_current ()->nice);
   thread_current ()->recent_cpu = rnconv_fptoi(sum);
+
   return 0;
 }
 
@@ -543,8 +553,7 @@ next_thread_to_run (void)
 {
   if (plist_empty (&ready_list))
       return idle_thread;
-  else
-    return list_entry (plist_pop_front (&ready_list), struct thread, elem);
+  return list_entry (plist_pop_front (&ready_list), struct thread, elem);
 }
 
 /* Completes a thread switch by activating the new thread's page
@@ -614,7 +623,7 @@ schedule (void)
   if (cur != next)
     prev = switch_threads (cur, next);
   thread_schedule_tail (prev);
- 
+
   timer_broadcast ();
 }
 
