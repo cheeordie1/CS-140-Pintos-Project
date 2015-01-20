@@ -5,5 +5,5 @@ threads/thread.o: ../../threads/thread.c ../../threads/thread.h \
  ../../lib/string.h ../../devices/timer.h ../../lib/round.h \
  ../../threads/flags.h ../../threads/interrupt.h \
  ../../threads/intr-stubs.h ../../threads/palloc.h ../../threads/switch.h \
- ../../threads/synch.h ../../threads/vaddr.h ../../threads/loader.h \
- ../../threads/plist.h
+ ../../threads/synch.h ../../threads/plist.h ../../threads/vaddr.h \
+ ../../threads/loader.h ../../threads/fixed-point.h

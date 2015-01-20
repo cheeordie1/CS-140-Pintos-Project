@@ -8,7 +8,10 @@ plist_init (struct priority_list *pl)
   int curr_b;
   for (curr_b = 0; curr_b <= PRI_MAX; curr_b++)
     list_init (&pl->pl_buckets[curr_b]);
+  pl->size = 0;
 }
+
+int plist_size (struct priority_list *pl) { return pl->size; }
 
 /* Adds an element to the ready list. Uses the element's priority to place the
    element in the correct list. */
@@ -19,13 +22,15 @@ plist_push_back (struct priority_list *pl, struct list_elem *e, int priority)
   ASSERT (pl != NULL);  
 
   list_push_back (&pl->pl_buckets[PRI_MAX - priority], e);
+  pl->size++;
 }
 
 /* Removes an element from the ready list. */
 void
-plist_remove (struct list_elem *e)
+plist_remove (struct priority_list *pl, struct list_elem *e)
 {
   list_remove (e);
+  pl->size--;
 }
 
 /* Pops an element from the the highest priority list that contains an element.
@@ -40,8 +45,10 @@ plist_pop_front (struct priority_list *pl)
   int curr_b;
   for (curr_b = 0; curr_b <= PRI_MAX; curr_b++)
     { 
-      if (!list_empty (&pl->pl_buckets[curr_b]))
+      if (!list_empty (&pl->pl_buckets[curr_b])){
+        pl->size--;
         return list_pop_front (&pl->pl_buckets[curr_b]);
+      }
     }
   return NULL;
 }
@@ -53,14 +60,8 @@ bool
 plist_empty (struct priority_list *pl)
 {
   ASSERT (pl != NULL);
-  
-  int curr_b;
-  for (curr_b = 0; curr_b <= PRI_MAX; curr_b++)
-    {
-      if (!list_empty (&pl->pl_buckets[curr_b]))
-        return false;
-    }
-  return true;
+
+  return pl->size == 0;
 }
 
 /* Return the highest priority of any element in the priority list. */
