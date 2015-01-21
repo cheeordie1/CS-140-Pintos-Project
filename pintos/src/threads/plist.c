@@ -11,7 +11,11 @@ plist_init (struct priority_list *pl)
   pl->size = 0;
 }
 
-int plist_size (struct priority_list *pl) { return pl->size; }
+int
+plist_size (struct priority_list *pl)
+{
+  return pl->size;
+}
 
 /* Adds an element to the ready list. Uses the element's priority to place the
    element in the correct list. */
