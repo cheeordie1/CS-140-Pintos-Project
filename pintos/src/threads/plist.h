@@ -12,8 +12,8 @@
 
 struct priority_list
   {
-    struct list pl_buckets[PRI_MAX + 1];
     int size;
+    struct list pl_buckets[PRI_MAX + 1];
   };
 
 void plist_init (struct priority_list *pl);
