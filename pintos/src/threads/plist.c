@@ -1,4 +1,5 @@
 #include "threads/plist.h"
+#include "threads/interrupt.h"
 
 void 
 plist_init (struct priority_list *pl)
@@ -64,8 +65,24 @@ bool
 plist_empty (struct priority_list *pl)
 {
   ASSERT (pl != NULL);
-
-  return pl->size == 0;
+  enum intr_level old_level = intr_disable ();
+/*  if (pl->size == 0)
+    {
+      intr_set_level (old_level);
+      return true;
+    }
+  intr_set_level (old_level);
+  return false; 
+*/int curr_b;
+  for (curr_b = 0; curr_b <= PRI_MAX; curr_b++)
+    { 
+      if (!list_empty (&pl->pl_buckets[curr_b])){
+        intr_set_level (old_level);
+        return false;
+      }
+    }
+  intr_set_level (old_level);
+  return true;
 }
 
 /* Return the highest priority of any element in the priority list. */

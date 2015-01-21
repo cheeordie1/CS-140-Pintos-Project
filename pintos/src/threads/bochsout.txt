@@ -30,7 +30,7 @@
 00000000000i[     ]   SB16 support: no
 00000000000i[     ]   USB support: no
 00000000000i[     ]   VGA extension support: vbe
-00000000000i[MEM0 ] allocated memory at 0x7fc63d7fa010. after alignment, vector=0x7fc63d7fb000
+00000000000i[MEM0 ] allocated memory at 0x7f776ddc2010. after alignment, vector=0x7f776ddc3000
 00000000000i[MEM0 ] 4.00MB
 00000000000i[MEM0 ] mem block size = 0x00100000, blocks=4
 00000000000i[MEM0 ] rom at 0xfffe0000/131072 ('/usr/class/cs140/x86_64/share/bochs/BIOS-bochs-latest')
@@ -62,7 +62,7 @@
 00000000000i[     ] init_dev of 'keyboard' plugin device by virtual method
 00000000000i[KBD  ] will paste characters every 400 keyboard ticks
 00000000000i[     ] init_dev of 'harddrv' plugin device by virtual method
-00000000000i[HD   ] HD on ata0-0: '/tmp/6i0dyEzqHp.dsk', 'flat' mode
+00000000000i[HD   ] HD on ata0-0: '/tmp/uXDdJTwyEE.dsk', 'flat' mode
 00000000000i[IMG  ] hd_size: 516096
 00000000000i[HD   ] ata0-0: using specified geometry: CHS=1/16/63
 00000000000i[HD   ] Using boot sequence disk, none, none
@@ -179,32 +179,8 @@
 00001839180i[BIOS ] ata0-0: PCHS=1/16/63 translation=none LCHS=1/16/63
 00005717573i[BIOS ] IDE time out
 00008761641i[BIOS ] Booting from 0000:7c00
-00009544692i[MEM0 ] allocate_block: block=0x1 used 0x3 of 0x4
-00009602427i[MEM0 ] allocate_block: block=0x2 used 0x4 of 0x4
-00089976324i[NGUI ] ips = 89.976M
-00185696492i[NGUI ] ips = 95.720M
-00281403755i[NGUI ] ips = 95.707M
-00377126124i[NGUI ] ips = 95.722M
-00472822035i[NGUI ] ips = 95.696M
-00568531465i[NGUI ] ips = 95.709M
-00664230701i[NGUI ] ips = 95.699M
-00759949459i[NGUI ] ips = 95.719M
-00855654046i[NGUI ] ips = 95.705M
-00951371129i[NGUI ] ips = 95.717M
-01047080483i[NGUI ] ips = 95.709M
-01142789643i[NGUI ] ips = 95.709M
-01238502872i[NGUI ] ips = 95.713M
-01334201609i[NGUI ] ips = 95.699M
-01429907407i[NGUI ] ips = 95.706M
-01525609505i[NGUI ] ips = 95.702M
-01621323221i[NGUI ] ips = 95.714M
-01717019821i[NGUI ] ips = 95.697M
-01812722733i[NGUI ] ips = 95.703M
-01908132415i[NGUI ] ips = 95.410M
-02003438934i[NGUI ] ips = 95.307M
-02099140250i[NGUI ] ips = 95.701M
-02194844962i[NGUI ] ips = 95.705M
-02290545026i[NGUI ] ips = 95.700M
-02386253075i[NGUI ] ips = 95.708M
-02481952221i[NGUI ] ips = 95.699M
-02577657214i[NGUI ] ips = 95.705M
+00009554423i[MEM0 ] allocate_block: block=0x1 used 0x3 of 0x4
+00009615359i[MEM0 ] allocate_block: block=0x2 used 0x4 of 0x4
+00059879996i[NGUI ] ips = 59.880M
+00123647266i[NGUI ] ips = 63.767M
+00186988001i[NGUI ] ips = 63.341M
