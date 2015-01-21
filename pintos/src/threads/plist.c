@@ -73,7 +73,7 @@ plist_empty (struct priority_list *pl)
     }
   intr_set_level (old_level);
   return false; 
-*/int curr_b;
+*/  int curr_b;
   for (curr_b = 0; curr_b <= PRI_MAX; curr_b++)
     { 
       if (!list_empty (&pl->pl_buckets[curr_b])){

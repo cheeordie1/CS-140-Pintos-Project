@@ -118,7 +118,6 @@ sema_up (struct semaphore *sema)
   if (!plist_empty (&sema->waiters)) 
     thread_unblock (list_entry (plist_pop_front (&sema->waiters),
                                 struct thread, elem));
-  // some other thread interrupts and adds itself to plist by calling sema_down
   sema->value++;
   intr_set_level (old_level);
 }
@@ -195,7 +194,7 @@ lock_init (struct lock *lock)
 void
 lock_acquire (struct lock *lock)
 {
-//  enum intr_level old_level = intr_disable ();
+  enum intr_level old_level = intr_disable ();
   ASSERT (lock != NULL);
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
@@ -203,7 +202,7 @@ lock_acquire (struct lock *lock)
   // lock->holder->priority = thread_current () -> priority;
   sema_down (&lock->semaphore);
   lock->holder = thread_current ();
-//  intr_set_level (old_level);
+  intr_set_level (old_level);
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -267,9 +266,7 @@ cond_init (struct condition *cond)
 {
   ASSERT (cond != NULL);
   
-  enum intr_level old_level = intr_disable ();
   plist_init (&cond->waiters);
-  intr_set_level (old_level);
 }
 
 /* Atomically releases LOCK and waits for COND to be signaled by
@@ -297,13 +294,15 @@ cond_wait (struct condition *cond, struct lock *lock)
 {
   struct semaphore_elem waiter;
 
+  sema_init (&waiter.semaphore, 0);
+  enum intr_level old_level = intr_disable ();
+
   ASSERT (cond != NULL);
   ASSERT (lock != NULL);
   ASSERT (!intr_context ());
   ASSERT (lock_held_by_current_thread (lock));
   
   sema_init (&waiter.semaphore, 0);
-  enum intr_level old_level = intr_disable ();
   plist_push_back (&cond->waiters, &waiter.elem, thread_current ()->priority);
   intr_set_level (old_level);
   lock_release (lock);
