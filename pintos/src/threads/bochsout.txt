@@ -30,7 +30,7 @@
 00000000000i[     ]   SB16 support: no
 00000000000i[     ]   USB support: no
 00000000000i[     ]   VGA extension support: vbe
-00000000000i[MEM0 ] allocated memory at 0x7fcaf04b8010. after alignment, vector=0x7fcaf04b9000
+00000000000i[MEM0 ] allocated memory at 0x7fc63d7fa010. after alignment, vector=0x7fc63d7fb000
 00000000000i[MEM0 ] 4.00MB
 00000000000i[MEM0 ] mem block size = 0x00100000, blocks=4
 00000000000i[MEM0 ] rom at 0xfffe0000/131072 ('/usr/class/cs140/x86_64/share/bochs/BIOS-bochs-latest')
@@ -62,7 +62,7 @@
 00000000000i[     ] init_dev of 'keyboard' plugin device by virtual method
 00000000000i[KBD  ] will paste characters every 400 keyboard ticks
 00000000000i[     ] init_dev of 'harddrv' plugin device by virtual method
-00000000000i[HD   ] HD on ata0-0: '/tmp/4fNxqgtyMF.dsk', 'flat' mode
+00000000000i[HD   ] HD on ata0-0: '/tmp/6i0dyEzqHp.dsk', 'flat' mode
 00000000000i[IMG  ] hd_size: 516096
 00000000000i[HD   ] ata0-0: using specified geometry: CHS=1/16/63
 00000000000i[HD   ] Using boot sequence disk, none, none
@@ -179,52 +179,32 @@
 00001839180i[BIOS ] ata0-0: PCHS=1/16/63 translation=none LCHS=1/16/63
 00005717573i[BIOS ] IDE time out
 00008761641i[BIOS ] Booting from 0000:7c00
-00009162932i[MEM0 ] allocate_block: block=0x1 used 0x3 of 0x4
-00009203831i[MEM0 ] allocate_block: block=0x2 used 0x4 of 0x4
-00420952750i[NGUI ] ips = 420.953M
-00991094856i[NGUI ] ips = 570.142M
-01561054062i[NGUI ] ips = 569.959M
-02131273021i[NGUI ] ips = 570.219M
-02701432144i[NGUI ] ips = 570.159M
-03271680987i[NGUI ] ips = 570.249M
-03842061750i[NGUI ] ips = 570.381M
-04412158729i[NGUI ] ips = 570.097M
-04982158222i[NGUI ] ips = 569.999M
-05551807700i[NGUI ] ips = 569.649M
-06122006498i[NGUI ] ips = 570.199M
-06691465539i[NGUI ] ips = 569.459M
-07261075012i[NGUI ] ips = 569.609M
-07830913895i[NGUI ] ips = 569.839M
-08401372908i[NGUI ] ips = 570.459M
-08971341914i[NGUI ] ips = 569.969M
-09541400822i[NGUI ] ips = 570.059M
-10111486699i[NGUI ] ips = 570.086M
-10681701806i[NGUI ] ips = 570.215M
-11251472750i[NGUI ] ips = 569.771M
-11821567150i[NGUI ] ips = 570.094M
-12391776249i[NGUI ] ips = 570.209M
-12961895437i[NGUI ] ips = 570.119M
-13531857791i[NGUI ] ips = 569.962M
-13746578232p[     ] >>PANIC<< SIGNAL 2 caught
-13746578232i[CPU0 ] CPU is in protected mode (active)
-13746578232i[CPU0 ] CS.mode = 32 bit
-13746578232i[CPU0 ] SS.mode = 32 bit
-13746578232i[CPU0 ] EFER   = 0x00000000
-13746578232i[CPU0 ] | EAX=00000000  EBX=c0035f64  ECX=c0103000  EDX=00000000
-13746578232i[CPU0 ] | ESP=c0103ec4  EBP=00000000  ESI=c0103000  EDI=00000000
-13746578232i[CPU0 ] | IOPL=0 id vip vif ac vm rf nt of df if tf sf ZF af PF cf
-13746578232i[CPU0 ] | SEG sltr(index|ti|rpl)     base    limit G D
-13746578232i[CPU0 ] |  CS:0008( 0001| 0|  0) 00000000 ffffffff 1 1
-13746578232i[CPU0 ] |  DS:0010( 0002| 0|  0) 00000000 ffffffff 1 1
-13746578232i[CPU0 ] |  SS:0010( 0002| 0|  0) 00000000 ffffffff 1 1
-13746578232i[CPU0 ] |  ES:0010( 0002| 0|  0) 00000000 ffffffff 1 1
-13746578232i[CPU0 ] |  FS:0010( 0002| 0|  0) 00000000 ffffffff 1 1
-13746578232i[CPU0 ] |  GS:0010( 0002| 0|  0) 00000000 ffffffff 1 1
-13746578232i[CPU0 ] | EIP=c0021326 (c0021325)
-13746578232i[CPU0 ] | CR0=0xe0010015 CR2=0x00000000
-13746578232i[CPU0 ] | CR3=0x00101000 CR4=0x00000000
-13746578232i[CPU0 ] 0xc0021325>> ret  : C3
-13746578232i[CMOS ] Last time is 13746 (Wed Dec 31 19:49:06 1969)
-13746578232i[NGUI ] bx_nogui_gui_c::exit() not implemented yet.
-13746578232i[     ] restoring default signal behavior
-13746578232i[CTRL ] quit_sim called with exit code 1
+00009544692i[MEM0 ] allocate_block: block=0x1 used 0x3 of 0x4
+00009602427i[MEM0 ] allocate_block: block=0x2 used 0x4 of 0x4
+00089976324i[NGUI ] ips = 89.976M
+00185696492i[NGUI ] ips = 95.720M
+00281403755i[NGUI ] ips = 95.707M
+00377126124i[NGUI ] ips = 95.722M
+00472822035i[NGUI ] ips = 95.696M
+00568531465i[NGUI ] ips = 95.709M
+00664230701i[NGUI ] ips = 95.699M
+00759949459i[NGUI ] ips = 95.719M
+00855654046i[NGUI ] ips = 95.705M
+00951371129i[NGUI ] ips = 95.717M
+01047080483i[NGUI ] ips = 95.709M
+01142789643i[NGUI ] ips = 95.709M
+01238502872i[NGUI ] ips = 95.713M
+01334201609i[NGUI ] ips = 95.699M
+01429907407i[NGUI ] ips = 95.706M
+01525609505i[NGUI ] ips = 95.702M
+01621323221i[NGUI ] ips = 95.714M
+01717019821i[NGUI ] ips = 95.697M
+01812722733i[NGUI ] ips = 95.703M
+01908132415i[NGUI ] ips = 95.410M
+02003438934i[NGUI ] ips = 95.307M
+02099140250i[NGUI ] ips = 95.701M
+02194844962i[NGUI ] ips = 95.705M
+02290545026i[NGUI ] ips = 95.700M
+02386253075i[NGUI ] ips = 95.708M
+02481952221i[NGUI ] ips = 95.699M
+02577657214i[NGUI ] ips = 95.705M

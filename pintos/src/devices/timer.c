@@ -82,13 +82,12 @@ timer_ticks (void)
   return t;
 }
 
-/*
- * TODO: write comments for timer_broadcast
- */
+/* Tells all people waiting for a timer to wake up and check */
 void
 timer_broadcast (void)
 {
-  lock_acquire (&timer_lock);
+  if(!lock_held_by_current_thread (&timer_lock))
+    lock_acquire (&timer_lock);
   cond_broadcast (&timer_cond, &timer_lock);
   lock_release (&timer_lock);
 }
@@ -109,10 +108,10 @@ timer_sleep (int64_t ticks)
 {
   int64_t start = timer_ticks ();
   ASSERT (intr_get_level () == INTR_ON);
-
-  lock_acquire (&timer_lock);  
+  
+  lock_acquire (&timer_lock);
   while (timer_elapsed (start) < ticks)
-      cond_wait (&timer_cond, &timer_lock);
+    cond_wait (&timer_cond, &timer_lock);
   lock_release (&timer_lock);
 }
 

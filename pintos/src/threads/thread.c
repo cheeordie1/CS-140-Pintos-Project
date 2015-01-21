@@ -4,6 +4,7 @@
 #include <random.h>
 #include <stdio.h>
 #include <string.h>
+#include "devices/timer.h"
 #include "threads/flags.h"
 #include "threads/interrupt.h"
 #include "threads/intr-stubs.h"
@@ -11,7 +12,8 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
-#include "threads/ready-list.h"
+#include "threads/plist.h"
+#include "threads/fixed-point.h"
 
 #ifdef USERPROG
 #include "userprog/process.h"
@@ -22,9 +24,12 @@
    of thread.h for details. */
 #define THREAD_MAGIC 0xcd6abf4b
 
+int TIMES = 0;
+
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
-static struct list ready_list;
+static struct priority_list ready_list;
+//static struct list ready_list;
 
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
@@ -63,7 +68,6 @@ static unsigned thread_ticks;   /* # of timer ticks since last yield. */
    Controlled by kernel command-line option "-o mlfqs". */
 bool thread_mlfqs;
 
-
 static void kernel_thread (thread_func *, void *aux);
 
 static void idle (void *aux UNUSED);
@@ -95,8 +99,7 @@ thread_init (void)
   ASSERT (intr_get_level () == INTR_OFF);
 
   lock_init (&tid_lock);
-  list_init (&ready_list);
-  ready_list_init ();
+  plist_init (&ready_list);
   list_init (&all_list);
 
   /* Set up a thread structure for the running thread. */
@@ -206,7 +209,8 @@ thread_create (const char *name, int priority,
 
   /* Add to run queue. */
   thread_unblock (t);
-
+   if(thread_current ()->priority < t->priority) 
+     thread_yield ();
   return tid;
 }
 
@@ -243,7 +247,7 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem);
+  plist_push_back (&ready_list, &t->elem, t->priority);
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -297,7 +301,7 @@ thread_exit (void)
      and schedule another process.  That process will destroy us
      when it calls thread_schedule_tail(). */
   intr_disable ();
-  list_remove (&thread_current()->allelem);
+  plist_remove (&ready_list, &thread_current()->allelem);
   thread_current ()->status = THREAD_DYING;
   schedule ();
   NOT_REACHED ();
@@ -315,7 +319,7 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    list_push_back (&ready_list, &cur->elem);
+    plist_push_back (&ready_list, &cur->elem, cur->priority);
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -338,68 +342,99 @@ thread_foreach (thread_action_func *func, void *aux)
     }
 }
 
+
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
-thread_set_priority (int new_priority) 
+thread_set_priority (int new_priority)
 {
   thread_current ()->priority = new_priority;
 }
 
 /* Returns the current thread's priority. */
 int
-thread_get_priority (void) 
+thread_get_priority (void)
 {
   return thread_current ()->priority;
 }
 
 /* Recalculates the current thread's priority. */
-void
+int
 thread_calculate_priority (void)
 {
-  /* Not yet implemented. */
+  /* new_priority = PRI_MAX - (recent_cpu / 4) - (nice * 2).
+     fp = recent_cpu, int = priority & nice */
+  /* Calculates recent_cpu / 4 */
+  fp quarter_cpu = div_fpn (conv_itofp (thread_current ()->recent_cpu), 4);
+  
+  /* Calculates  (PRI_MAX - (recent_cpu / 4)) */
+  fp sub1 = sub_fpfp (conv_itofp(PRI_MAX), quarter_cpu);
+
+  /* Calculates (PRI_MAX - (recent_cpu /4)) - (nice*2) */
+  fp new_priority = sub_fpn (sub1, (thread_current ()->nice * 2));
+
+  /* Change priority */
+  thread_set_priority(rzconv_fptoi (new_priority));
+
+  return 0;
 }
 
 /* Sets the current thread's nice value to NICE. */
 void
-thread_set_nice (int nice) 
+thread_set_nice (int nice)
 {
-  thread_current ()->nice = nice;
+ thread_current ()->nice = nice;
 }
+
 
 /* Returns the current thread's nice value. */
 int
-thread_get_nice (void) 
+thread_get_nice (void)
 {
   return thread_current ()->nice;
 }
 
 /* Returns 100 times the system load average. */
 int
-thread_get_load_avg (void) 
+thread_get_load_avg (void)
 {
   return (100 * load_avg);
 }
 
-void
+int
 thread_calculate_load_avg (void)
 {
-  /* Not yet implemented. */
+ fp product1 = mult_fpfp(div_fpn(conv_itofp(59), 60), conv_itofp(load_avg));
+ fp product2 = mult_fpfp(div_fpn(conv_itofp(1), 60), 
+  conv_itofp(plist_size(&ready_list)));
+
+ fp load_avg_fp = add_fpfp (product1, product2);
+ fp load_avg_coefficient_fp = div_fpfp (mult_fpn (load_avg_fp, 2), 
+   add_fpn (mult_fpn (load_avg_fp, 2), 1));
+
+ load_avg = rnconv_fptoi (load_avg_fp);
+ load_avg_coefficient = rnconv_fptoi (load_avg_coefficient_fp);
+
+  return 0;
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
-thread_get_recent_cpu (void) 
+thread_get_recent_cpu (void)
 {
-  return (100 * thread_current ()->recent_cpu);
+ return (100 * thread_current ()->recent_cpu);
 }
 
-void
+int
 thread_calculate_recent_cpu (void)
 {
-  /* Not yet implemented. */
+  thread_calculate_load_avg();
+  fp product = mult_fpfp(conv_itofp(load_avg_coefficient),
+   conv_itofp(thread_current ()->recent_cpu));
+  fp sum = add_fpn(product, thread_current ()->nice);
+  thread_current ()->recent_cpu = rnconv_fptoi(sum);
+
+  return 0;
 }
-
-
 
 /* Idle thread.  Executes when no other thread is ready to run.
 
@@ -516,10 +551,9 @@ alloc_frame (struct thread *t, size_t size)
 static struct thread *
 next_thread_to_run (void) 
 {
-  if (list_empty (&ready_list))
+  if (plist_empty (&ready_list))
       return idle_thread;
-  else
-    return list_entry (list_pop_front (&ready_list), struct thread, elem);
+  return list_entry (plist_pop_front (&ready_list), struct thread, elem);
 }
 
 /* Completes a thread switch by activating the new thread's page
@@ -589,7 +623,7 @@ schedule (void)
   if (cur != next)
     prev = switch_threads (cur, next);
   thread_schedule_tail (prev);
- 
+
   timer_broadcast ();
 }
 
@@ -606,7 +640,7 @@ allocate_tid (void)
 
   return tid;
 }
-
+
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
