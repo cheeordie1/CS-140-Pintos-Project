@@ -245,12 +245,8 @@ thread_unblock (struct thread *t)
   plist_push_back (&ready_list, &t->elem, t->priority);
   t->thread_pl = &ready_list;
   t->status = THREAD_READY;
-  if(thread_current ()->priority < t->priority && old_level != INTR_OFF)
-    {
-      if (t != running_thread ())
-        thread_yield ();
-      else schedule ();
-    }
+  if(thread_get_priority () < t->priority && old_level != INTR_OFF)
+    thread_yield ();
   intr_set_level (old_level);
 }
 
@@ -353,9 +349,13 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority)
 {
-  enum intr_level old_level = intr_disable ();
+  enum intr_level old_level;
   struct thread *cur = thread_current ();
+
+  old_level = intr_disable ();
   cur->priority = new_priority;
+  if (cur->priority < plist_top_priority (&ready_list))
+    thread_yield ();
   intr_set_level (old_level);
 }
 
@@ -494,7 +494,7 @@ kernel_thread (thread_func *function, void *aux)
   function (aux);       /* Execute the thread function. */
   thread_exit ();       /* If function() returns, kill the thread. */
 }
-
+
 /* Returns the running thread. */
 struct thread *
 running_thread (void) 
@@ -527,6 +527,7 @@ init_thread (struct thread *t, const char *name, int priority)
   ASSERT (PRI_MIN <= priority && priority <= PRI_MAX);
   ASSERT (name != NULL);
 
+  old_level = intr_disable ();
   memset (t, 0, sizeof *t);
   t->status = THREAD_BLOCKED;
   strlcpy (t->name, name, sizeof t->name);
@@ -539,7 +540,6 @@ init_thread (struct thread *t, const char *name, int priority)
   t->sleep = -1;
   t->thread_pl = NULL;
   
-  old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
   intr_set_level (old_level);
 }
