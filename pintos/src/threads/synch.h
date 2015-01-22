@@ -7,7 +7,7 @@
 /* A counting semaphore. */
 struct semaphore 
   {
-    unsigned value;             /* Current value. */
+    unsigned value;                      /* Current value. */
     struct priority_list waiters;        /* List of waiting threads. */
   };
 
@@ -33,7 +33,7 @@ bool lock_held_by_current_thread (const struct lock *);
 /* Condition variable. */
 struct condition 
   {
-    struct priority_list waiters;        /* list of waiting threads. */
+    struct priority_list waiters;        /* list of semaphores with waiting threads. */
   };
 
 void cond_init (struct condition *);

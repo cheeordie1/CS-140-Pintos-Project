@@ -92,7 +92,9 @@ struct thread
     int nice;                           /* How nice a thread is to let other threads schedule. */
     int recent_cpu;                     /* Recently used CPU by thread. */
     int64_t start;                      /* Beginning of when thread went to sleep last. */
-    int sleep;                          /* number of ticks we are waiting for. */
+    int sleep;                          /* Number of ticks we are waiting for. */
+
+    struct priority_list *thread_pl;    /* Priority list that currently contains this thread */ 
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */

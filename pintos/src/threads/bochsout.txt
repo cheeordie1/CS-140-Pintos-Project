@@ -30,7 +30,7 @@
 00000000000i[     ]   SB16 support: no
 00000000000i[     ]   USB support: no
 00000000000i[     ]   VGA extension support: vbe
-00000000000i[MEM0 ] allocated memory at 0x7f8f2adc8010. after alignment, vector=0x7f8f2adc9000
+00000000000i[MEM0 ] allocated memory at 0x7ffdac1d7010. after alignment, vector=0x7ffdac1d8000
 00000000000i[MEM0 ] 4.00MB
 00000000000i[MEM0 ] mem block size = 0x00100000, blocks=4
 00000000000i[MEM0 ] rom at 0xfffe0000/131072 ('/usr/class/cs140/x86_64/share/bochs/BIOS-bochs-latest')
@@ -62,7 +62,7 @@
 00000000000i[     ] init_dev of 'keyboard' plugin device by virtual method
 00000000000i[KBD  ] will paste characters every 400 keyboard ticks
 00000000000i[     ] init_dev of 'harddrv' plugin device by virtual method
-00000000000i[HD   ] HD on ata0-0: '/tmp/La7nE4owGR.dsk', 'flat' mode
+00000000000i[HD   ] HD on ata0-0: '/tmp/ECK_zghuYY.dsk', 'flat' mode
 00000000000i[IMG  ] hd_size: 516096
 00000000000i[HD   ] ata0-0: using specified geometry: CHS=1/16/63
 00000000000i[HD   ] Using boot sequence disk, none, none
@@ -179,8 +179,18 @@
 00001839180i[BIOS ] ata0-0: PCHS=1/16/63 translation=none LCHS=1/16/63
 00005717573i[BIOS ] IDE time out
 00008761641i[BIOS ] Booting from 0000:7c00
-00009286334i[MEM0 ] allocate_block: block=0x1 used 0x3 of 0x4
-00009330774i[MEM0 ] allocate_block: block=0x2 used 0x4 of 0x4
-00171351128i[NGUI ] ips = 171.351M
-00367015842i[NGUI ] ips = 195.665M
-00562721000i[NGUI ] ips = 195.705M
+00009286096i[MEM0 ] allocate_block: block=0x1 used 0x3 of 0x4
+00009330440i[MEM0 ] allocate_block: block=0x2 used 0x4 of 0x4
+00205828500i[NGUI ] ips = 205.828M
+00437965260i[NGUI ] ips = 232.137M
+00670089279i[NGUI ] ips = 232.124M
+00902174310i[NGUI ] ips = 232.085M
+01134347491i[NGUI ] ips = 232.173M
+01366550845i[NGUI ] ips = 232.203M
+01598773967i[NGUI ] ips = 232.223M
+01830942935i[NGUI ] ips = 232.169M
+02063141977i[NGUI ] ips = 232.199M
+02295365430i[NGUI ] ips = 232.223M
+02527424481i[NGUI ] ips = 232.059M
+02759583348i[NGUI ] ips = 232.159M
+02991677879i[NGUI ] ips = 232.095M

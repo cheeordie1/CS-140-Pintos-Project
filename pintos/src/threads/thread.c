@@ -27,7 +27,6 @@
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct priority_list ready_list;
-//static struct list ready_list;
 
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
@@ -244,6 +243,7 @@ thread_unblock (struct thread *t)
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
   plist_push_back (&ready_list, &t->elem, t->priority);
+  t->thread_pl = &ready_list;
   t->status = THREAD_READY;
   if(thread_current ()->priority < t->priority && old_level != INTR_OFF)
     {
@@ -304,6 +304,7 @@ thread_exit (void)
      when it calls thread_schedule_tail(). */
   intr_disable ();
   plist_remove (&ready_list, &thread_current()->allelem);
+  thread_current ()->thread_pl = NULL;
   thread_current ()->status = THREAD_DYING;
   schedule ();
   NOT_REACHED ();
@@ -320,8 +321,11 @@ thread_yield (void)
   ASSERT (!intr_context ());
 
   old_level = intr_disable ();
-  if (cur != idle_thread) 
-    plist_push_back (&ready_list, &cur->elem, cur->priority);
+  if (cur != idle_thread)
+    { 
+      plist_push_back (&ready_list, &cur->elem, cur->priority);
+      cur->thread_pl = &ready_list;
+    }
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -349,7 +353,12 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority)
 {
-  thread_current ()->priority = new_priority;
+  enum intr_level old_level = intr_disable ();
+  struct thread *cur = thread_current ();
+  cur->priority = new_priority;
+  if (cur->thread_pl != NULL)
+    plist_update_elem (cur->thread_pl, &cur->elem, cur->priority);
+  intr_set_level (old_level);
 }
 
 /* Returns the current thread's priority. */
@@ -530,7 +539,8 @@ init_thread (struct thread *t, const char *name, int priority)
   t->recent_cpu = 0;
   t->start = -1;
   t->sleep = -1;
-
+  t->thread_pl = NULL;
+  
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
   intr_set_level (old_level);
@@ -559,7 +569,9 @@ next_thread_to_run (void)
 {
   if (plist_empty (&ready_list))
     return idle_thread;
-  return list_entry (plist_pop_front (&ready_list), struct thread, elem);
+  struct thread *ret = list_entry (plist_pop_front (&ready_list), struct thread, elem);
+  ret->thread_pl = NULL;
+  return ret;
 }
 
 /* Completes a thread switch by activating the new thread's page
