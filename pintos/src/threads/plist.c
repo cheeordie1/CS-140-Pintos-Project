@@ -19,7 +19,9 @@ plist_size (struct priority_list *pl)
 }
 
 /* Adds an element to the ready list. Uses the element's priority to place the
-   element in the correct list. */
+   element in the correct list. Must pass a pointer to a list of priority lists
+   from the element that we are inserting into the list if the elements are
+   expected to change priority. */
 void
 plist_push_back (struct priority_list *pl, struct list_elem *e, int priority)
 {
@@ -34,6 +36,9 @@ plist_push_back (struct priority_list *pl, struct list_elem *e, int priority)
 void
 plist_remove (struct priority_list *pl, struct list_elem *e)
 {
+  ASSERT (e != NULL);
+  ASSERT (pl != NULL);
+
   list_remove (e);
   pl->size--;
 }
@@ -46,7 +51,7 @@ struct list_elem *
 plist_pop_front (struct priority_list *pl)
 {
   ASSERT (pl != NULL);
- 
+
   int curr_b;
   for (curr_b = 0; curr_b <= PRI_MAX; curr_b++)
     { 
@@ -65,7 +70,6 @@ bool
 plist_empty (struct priority_list *pl)
 {
   ASSERT (pl != NULL);
-  enum intr_level old_level = intr_disable ();
 /*  if (pl->size == 0)
     {
       intr_set_level (old_level);
@@ -73,15 +77,13 @@ plist_empty (struct priority_list *pl)
     }
   intr_set_level (old_level);
   return false; 
-*/int curr_b;
+*/  int curr_b;
   for (curr_b = 0; curr_b <= PRI_MAX; curr_b++)
     { 
       if (!list_empty (&pl->pl_buckets[curr_b])){
-        intr_set_level (old_level);
         return false;
       }
     }
-  intr_set_level (old_level);
   return true;
 }
 
@@ -96,4 +98,15 @@ plist_top_priority (struct priority_list *pl)
         return (PRI_MAX - curr_b);
     }
   return PRI_MIN;
+}
+
+/* Update the priority of a given element in the priority list.
+   This function removes the element and inserts it back into the
+   list, assuming its priority has changed. */
+void
+plist_update_elem (struct priority_list *pl, struct list_elem *e, int priority)
+{
+  if (pl == NULL) return;
+  plist_remove (pl, e);
+  plist_push_back (pl, e, priority);
 }
