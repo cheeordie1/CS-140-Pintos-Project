@@ -47,9 +47,7 @@ sema_init (struct semaphore *sema, unsigned value)
   ASSERT (sema != NULL);
 
   sema->value = value;
-  enum intr_level old_level = intr_disable ();
   plist_init (&sema->waiters);
-  intr_set_level (old_level);
 }
 
 /* Down or "P" operation on a semaphore.  Waits for SEMA's value
@@ -194,7 +192,7 @@ lock_init (struct lock *lock)
 void
 lock_acquire (struct lock *lock)
 {
-  enum intr_level old_level = intr_disable ();
+//  enum intr_level old_level = intr_disable ();
   ASSERT (lock != NULL);
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
@@ -202,7 +200,7 @@ lock_acquire (struct lock *lock)
   // lock->holder->priority = thread_current () -> priority;
   sema_down (&lock->semaphore);
   lock->holder = thread_current ();
-  intr_set_level (old_level);
+//  intr_set_level (old_level);
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -295,7 +293,6 @@ cond_wait (struct condition *cond, struct lock *lock)
   struct semaphore_elem waiter;
 
   sema_init (&waiter.semaphore, 0);
-  enum intr_level old_level = intr_disable ();
 
   ASSERT (cond != NULL);
   ASSERT (lock != NULL);
@@ -304,7 +301,6 @@ cond_wait (struct condition *cond, struct lock *lock)
   
   sema_init (&waiter.semaphore, 0);
   plist_push_back (&cond->waiters, &waiter.elem, thread_current ()->priority);
-  intr_set_level (old_level);
   lock_release (lock);
   sema_down (&waiter.semaphore);
   lock_acquire (lock);

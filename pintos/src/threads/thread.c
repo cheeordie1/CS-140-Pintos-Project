@@ -245,8 +245,12 @@ thread_unblock (struct thread *t)
   ASSERT (t->status == THREAD_BLOCKED);
   plist_push_back (&ready_list, &t->elem, t->priority);
   t->status = THREAD_READY;
-  if(thread_current ()->priority < t->priority && old_level != INTR_OFF) 
-    thread_yield ();
+  if(thread_current ()->priority < t->priority && old_level != INTR_OFF)
+    {
+      if (t != running_thread ())
+        thread_yield ();
+      else schedule ();
+    }
   intr_set_level (old_level);
 }
 
@@ -554,7 +558,7 @@ static struct thread *
 next_thread_to_run (void) 
 {
   if (plist_empty (&ready_list))
-      return idle_thread;
+    return idle_thread;
   return list_entry (plist_pop_front (&ready_list), struct thread, elem);
 }
 
@@ -621,7 +625,7 @@ schedule (void)
   ASSERT (intr_get_level () == INTR_OFF);
   ASSERT (cur->status != THREAD_RUNNING);
   ASSERT (is_thread (next));
-  
+
   if (cur != next)
     prev = switch_threads (cur, next);
   thread_schedule_tail (prev);
