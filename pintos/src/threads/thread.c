@@ -356,8 +356,6 @@ thread_set_priority (int new_priority)
   enum intr_level old_level = intr_disable ();
   struct thread *cur = thread_current ();
   cur->priority = new_priority;
-  if (cur->thread_pl != NULL)
-    plist_update_elem (cur->thread_pl, &cur->elem, cur->priority);
   intr_set_level (old_level);
 }
 

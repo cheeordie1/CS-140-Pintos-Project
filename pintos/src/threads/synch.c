@@ -32,8 +32,7 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 
-void 
-cond_sort_priority (struct condition *cond);
+void cond_sort_priority (struct condition *cond);
 
 /* Initializes semaphore SEMA to VALUE.  A semaphore is a
    nonnegative integer along with two atomic operators for
@@ -117,10 +116,10 @@ sema_up (struct semaphore *sema)
   ASSERT (sema != NULL);
 
   old_level = intr_disable ();
+  sema->value++;
   if (!plist_empty (&sema->waiters)) 
     thread_unblock (list_entry (plist_pop_front (&sema->waiters),
                                 struct thread, elem));
-  sema->value++;
   intr_set_level (old_level);
 }
 
@@ -196,7 +195,7 @@ lock_init (struct lock *lock)
 void
 lock_acquire (struct lock *lock)
 {
-//  enum intr_level old_level = intr_disable ();
+  enum intr_level old_level = intr_disable ();
   ASSERT (lock != NULL);
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
@@ -204,7 +203,7 @@ lock_acquire (struct lock *lock)
   // lock->holder->priority = thread_current () -> priority;
   sema_down (&lock->semaphore);
   lock->holder = thread_current ();
-//  intr_set_level (old_level);
+  intr_set_level (old_level);
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -235,11 +234,13 @@ lock_try_acquire (struct lock *lock)
 void
 lock_release (struct lock *lock) 
 {
+  enum intr_level old_level = intr_disable ();
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
   // Change back to old priority (lock->holder)
   lock->holder = NULL;
   sema_up (&lock->semaphore);
+  intr_set_level (old_level);
 }
 
 /* Returns true if the current thread holds LOCK, false
