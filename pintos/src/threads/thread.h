@@ -4,6 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "threads/fixed-point.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -90,10 +91,11 @@ struct thread
     int priority;                       /* Priority. */
     struct list_elem allelem;           /* List element for all threads list. */
     int nice;                           /* How nice a thread is to let other threads schedule. */
-    int recent_cpu;                     /* Recently used CPU by thread. */
+    fp recent_cpu;                      /* Recently used CPU by thread. */
     int64_t start;                      /* Beginning of when thread went to sleep last. */
     int64_t sleep;                      /* Number of ticks we are waiting for. */
 
+    bool recently_up;                   /* Boolean to let thread mlfqs know when we update */
     struct priority_list *thread_pl;    /* Priority list that currently contains this thread */ 
 
     /* Shared between thread.c and synch.c. */
@@ -138,16 +140,12 @@ void thread_foreach (thread_action_func *, void *);
 
 int thread_get_priority (void);
 void thread_set_priority (int);
-int thread_calculate_priority (void);
 
 int thread_get_nice (void);
 void thread_set_nice (int);
 
 int thread_get_recent_cpu (void);
-int thread_calculate_recent_cpu (void);
 
 int thread_get_load_avg (void);
-int thread_calculate_load_avg (void);
-
 
 #endif /* threads/thread.h */

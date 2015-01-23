@@ -178,9 +178,11 @@ update_timers (struct thread *t, void *aux)
     return;
   if (timer_elapsed (t->start) >= t->sleep)
     {
-      t->start = -1;
-      thread_unblock (t);
-      return;
+      t->start = -1
+      plist_push_back (&ready_list, &t->elem, t->priority);
+      t->thread_pl = &ready_list;
+      t->status = THREAD_READY;
+      intr_yield_on_return ();
     }
 }
 
