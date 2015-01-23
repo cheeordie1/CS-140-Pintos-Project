@@ -46,6 +46,9 @@ struct kernel_thread_frame
   {
     void *eip;                  /* Return address. */
     thread_func *function;      /* Function to call. */
+    
+    int test;    
+
     void *aux;                  /* Auxiliary data for function. */
   };
 
