@@ -92,7 +92,7 @@ struct thread
     int nice;                           /* How nice a thread is to let other threads schedule. */
     int recent_cpu;                     /* Recently used CPU by thread. */
     int64_t start;                      /* Beginning of when thread went to sleep last. */
-    int sleep;                          /* Number of ticks we are waiting for. */
+    int64_t sleep;                      /* Number of ticks we are waiting for. */
 
     struct priority_list *thread_pl;    /* Priority list that currently contains this thread */ 
 
@@ -124,6 +124,7 @@ tid_t thread_create (const char *name, int priority, thread_func *, void *);
 
 void thread_block (void);
 void thread_unblock (struct thread *);
+void thread_sleep (void);
 
 struct thread *thread_current (void);
 tid_t thread_tid (void);
@@ -135,7 +136,7 @@ void thread_yield (void);
 /* Performs some operation on thread t, given auxiliary data AUX. */
 typedef void thread_action_func (struct thread *t, void *aux);
 void thread_foreach (thread_action_func *, void *);
-
+void thread_update_timers (void);
 int thread_get_priority (void);
 void thread_set_priority (int);
 int thread_calculate_priority (void);

@@ -117,9 +117,12 @@ sema_up (struct semaphore *sema)
 
   old_level = intr_disable ();
   sema->value++;
-  if (!plist_empty (&sema->waiters)) 
-    thread_unblock (list_entry (plist_pop_front (&sema->waiters),
-                                struct thread, elem));
+  if (!plist_empty (&sema->waiters))
+    { 
+      intr_set_level (old_level);
+      thread_unblock (list_entry (plist_pop_front (&sema->waiters),
+                      struct thread, elem));
+    }
   intr_set_level (old_level);
 }
 
@@ -195,7 +198,6 @@ lock_init (struct lock *lock)
 void
 lock_acquire (struct lock *lock)
 {
-  enum intr_level old_level = intr_disable ();
   ASSERT (lock != NULL);
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
@@ -203,7 +205,6 @@ lock_acquire (struct lock *lock)
   // lock->holder->priority = thread_current () -> priority;
   sema_down (&lock->semaphore);
   lock->holder = thread_current ();
-  intr_set_level (old_level);
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -234,13 +235,11 @@ lock_try_acquire (struct lock *lock)
 void
 lock_release (struct lock *lock) 
 {
-  enum intr_level old_level = intr_disable ();
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
   // Change back to old priority (lock->holder)
   lock->holder = NULL;
   sema_up (&lock->semaphore);
-  intr_set_level (old_level);
 }
 
 /* Returns true if the current thread holds LOCK, false
@@ -296,7 +295,7 @@ void
 cond_wait (struct condition *cond, struct lock *lock) 
 {
   struct semaphore_elem waiter;
-//  enum inter_level old_level;
+  enum intr_level old_level;
 
   sema_init (&waiter.semaphore, 0);
 
@@ -306,9 +305,9 @@ cond_wait (struct condition *cond, struct lock *lock)
   ASSERT (lock_held_by_current_thread (lock));
   
   sema_init (&waiter.semaphore, 0);
-//  old_level = intr_disable ();
+  old_level = intr_disable ();
   plist_push_back (&cond->waiters, &waiter.elem, thread_current ()->priority);
-//  intr_set_level (old_level);
+  intr_set_level (old_level);
   lock_release (lock);
   sema_down (&waiter.semaphore);
   lock_acquire (lock);
@@ -372,6 +371,8 @@ cond_sort_priority (struct condition *cond)
   for (curr_b = 0; curr_b <= PRI_MAX; curr_b++)
     {
       if (!list_empty (&temp.pl_buckets[curr_b]))
-          plist_push_back (&cond->waiters, list_pop_front (&temp.pl_buckets[curr_b]), curr_b); 
+          plist_push_back (&cond->waiters,
+                           list_pop_front (&temp.pl_buckets[curr_b]),
+                           PRI_MAX - curr_b); 
     }
 }
