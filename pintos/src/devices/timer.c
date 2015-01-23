@@ -24,15 +24,13 @@ static int64_t ticks;
    Initialized by timer_calibrate(). */
 static unsigned loops_per_tick;
 
-/* Synchronization for timer */
-static struct condition timer_cond;
-static struct lock timer_lock;
-
 static intr_handler_func timer_interrupt;
 static bool too_many_loops (unsigned loops);
 static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
 static void real_time_delay (int64_t num, int32_t denom);
+static void update_timers (struct thread *t, void *aux);
+
 
 /* Sets up the timer to interrupt TIMER_FREQ times per second,
    and registers the corresponding interrupt. */
@@ -41,8 +39,6 @@ timer_init (void)
 {
   pit_configure_channel (0, 2, TIMER_FREQ);
   intr_register_ext (0x20, timer_interrupt, "8254 Timer");
-  lock_init (&timer_lock);
-  cond_init (&timer_cond);
 }
 
 /* Calibrates loops_per_tick, used to implement brief delays. */
@@ -82,17 +78,6 @@ timer_ticks (void)
   return t;
 }
 
-/* Tells all people waiting for a timer to wake up and check */
-void
-timer_broadcast (void)
-{
-  if(!lock_held_by_current_thread (&timer_lock))
-    lock_acquire (&timer_lock);
-  cond_broadcast (&timer_cond, &timer_lock);
-  lock_release (&timer_lock);
-}
-
-
 /* Returns the number of timer ticks elapsed since THEN, which
    should be a value once returned by timer_ticks(). */
 int64_t
@@ -106,15 +91,14 @@ timer_elapsed (int64_t then)
 void
 timer_sleep (int64_t ticks) 
 {
-  int64_t start = timer_ticks ();
+  enum intr_level old_level;
   ASSERT (intr_get_level () == INTR_ON);
   
-  enum intr_level old_level = intr_disable ();
-  lock_acquire (&timer_lock);
+  old_level = intr_disable ();
+  thread_current ()->start = timer_ticks ();
+  thread_current ()->sleep = ticks;
+  thread_block();
   intr_set_level (old_level);
-  while (timer_elapsed (start) < ticks)
-    cond_wait (&timer_cond, &timer_lock);
-  lock_release (&timer_lock);
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -187,11 +171,27 @@ timer_print_stats (void)
   printf ("Timer: %"PRId64" ticks\n", timer_ticks ());
 }
 
+void
+update_timers (struct thread *t, void *aux)
+{
+  if (t->start < 0)
+    return;
+  if (timer_elapsed (t->start) >= t->sleep)
+    {
+      t->start = -1;
+      thread_unblock (t);
+      return;
+    }
+}
+
 /* Timer interrupt handler. */
 static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
+  enum intr_level old_level = intr_disable ();
+  thread_foreach (update_timers, NULL);
+  intr_set_level (old_level);
   thread_tick ();
 }
 
