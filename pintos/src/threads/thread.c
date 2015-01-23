@@ -349,6 +349,7 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority)
 {
+  if (thread_mlfqs) return;
   enum intr_level old_level;
   struct thread *cur = thread_current ();
 
@@ -391,7 +392,7 @@ thread_calculate_priority (void)
 void
 thread_set_nice (int nice)
 {
- thread_current ()->nice = nice;
+  thread_current ()->nice = nice;
 }
 
 
@@ -414,11 +415,11 @@ thread_calculate_load_avg (void)
 {
  fp product1 = mult_fpfp(div_fpn(conv_itofp(59), 60), conv_itofp(load_avg));
  fp product2 = mult_fpfp(div_fpn(conv_itofp(1), 60), 
-  conv_itofp ( plist_size (&ready_list)));
+                         conv_itofp ( plist_size (&ready_list)));
 
  fp load_avg_fp = add_fpfp (product1, product2);
  fp load_avg_coefficient_fp = div_fpfp (mult_fpn (load_avg_fp, 2), 
-   add_fpn (mult_fpn (load_avg_fp, 2), 1));
+                                        add_fpn (mult_fpn (load_avg_fp, 2), 1));
 
  load_avg = rnconv_fptoi (load_avg_fp);
  load_avg_coefficient = rnconv_fptoi (load_avg_coefficient_fp);
@@ -438,7 +439,7 @@ thread_calculate_recent_cpu (void)
 {
   thread_calculate_load_avg();
   fp product = mult_fpfp(conv_itofp(load_avg_coefficient),
-   conv_itofp(thread_current ()->recent_cpu));
+                         conv_itofp(thread_current ()->recent_cpu));
   fp sum = add_fpn(product, thread_current ()->nice);
   thread_current ()->recent_cpu = rnconv_fptoi(sum);
 
@@ -532,7 +533,10 @@ init_thread (struct thread *t, const char *name, int priority)
   t->status = THREAD_BLOCKED;
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
-  t->priority = priority;
+  if (thread_mlfqs)
+    t->priority = 0;
+  else
+    t->priority = priority;
   t->magic = THREAD_MAGIC;
   t->nice = 0;
   t->recent_cpu = 0;
