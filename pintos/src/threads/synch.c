@@ -201,10 +201,41 @@ lock_acquire (struct lock *lock)
   ASSERT (lock != NULL);
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
-  // lock->holder->original_priority = lock->holder->priority;
-  // lock->holder->priority = thread_current () -> priority;
+
+  
+  /*
+    if a thread with a lower priority has this lock,
+        donate this priority to that
+        set this next to thread with the lock
+        set thread with the lock's previous list_elem to this lock,
+            thus negating prior previous waiters
+    */
+  if (lock_try_acquire (lock)) 
+    {
+      lock->original_priority = thread_current ()->priority;
+      thread_current ()->receiver = NULL;
+      return;
+    } 
+  else if (thread_current ()->priority > lock->holder->priority)
+    {
+      thread_current ()->receiver = lock;
+      struct lock *cur = lock;
+      int count = 0;
+      while (cur != NULL && count < 9) 
+        {
+          cur->holder->priority = thread_current ()->priority;
+          if (cur->holder->thread_pl)
+            plist_update_elem (cur->holder->thread_pl,
+                               &cur->holder->elem,
+                               cur->holder->priority);
+          cur = cur->holder->receiver;
+          count++;       
+        }
+    }
   sema_down (&lock->semaphore);
   lock->holder = thread_current ();
+  lock->original_priority = thread_current ()->priority;
+  thread_current ()->receiver = NULL;
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -237,7 +268,7 @@ lock_release (struct lock *lock)
 {
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
-  // Change back to old priority (lock->holder)
+  thread_current ()->priority = lock->original_priority;
   lock->holder = NULL;
   sema_up (&lock->semaphore);
 }

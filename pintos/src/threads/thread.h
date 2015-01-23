@@ -95,7 +95,7 @@ struct thread
     int64_t sleep;                      /* Number of ticks we are waiting for. */
 
     struct priority_list *thread_pl;    /* Priority list that currently contains this thread */ 
-
+    struct lock *receiver;
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 

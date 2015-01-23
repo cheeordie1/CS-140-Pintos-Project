@@ -80,6 +80,8 @@ static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
+static void thread_check_donation (struct thread *t, void *aux);
+
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
@@ -217,6 +219,8 @@ thread_create (const char *name, int priority,
   return tid;
 }
 
+ 
+
 void
 thread_update_timers (void)
 {
@@ -229,7 +233,10 @@ thread_update_timers (void)
         {
           t->start = -1;
           cur = list_remove (&t->elem);
-          thread_unblock (t);
+          plist_push_back (&ready_list, &t->elem, t->priority);
+          t->thread_pl = &ready_list;
+          t->status = THREAD_READY;
+          intr_yield_on_return ();
         } else 
           cur = list_next(cur);
     }
@@ -377,6 +384,15 @@ thread_foreach (thread_action_func *func, void *aux)
     }
 }
 
+void
+thread_check_donation (struct thread *t, void *aux)
+{
+  if (!t->receiver) return;
+  if (!t->receiver->holder) return;
+  if (t->receiver->holder == thread_current ()
+      && t->receiver->holder->priority == thread_current ()->priority)
+    *(struct lock **) aux = t->receiver; 
+}
 
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
@@ -385,11 +401,25 @@ thread_set_priority (int new_priority)
   if (thread_mlfqs) return;
   enum intr_level old_level;
   struct thread *cur = thread_current ();
+  struct lock *donated = NULL;  
 
   old_level = intr_disable ();
+  if (cur->priority > new_priority)
+    {
+      thread_foreach (thread_check_donation, &donated);
+      if (donated) 
+        {
+          donated->original_priority = new_priority;
+          intr_set_level (old_level);
+          return;
+        } 
+    }
   cur->priority = new_priority;
   if (cur->priority < plist_top_priority (&ready_list))
-    thread_yield ();
+    {
+      intr_set_level (old_level);
+      thread_yield ();
+    }
   intr_set_level (old_level);
 }
 
