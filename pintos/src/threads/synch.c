@@ -198,44 +198,56 @@ lock_init (struct lock *lock)
 void
 lock_acquire (struct lock *lock)
 {
+  enum intr_level old_level; 
+  struct thread *t = thread_current ();
+
   ASSERT (lock != NULL);
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
 
-  
-  /*
-    if a thread with a lower priority has this lock,
-        donate this priority to that
-        set this next to thread with the lock
-        set thread with the lock's previous list_elem to this lock,
-            thus negating prior previous waiters
-    */
+ /* If a thread with a lower priority has this lock,
+    donate this priority to that set this next to 
+    thread with the lock set thread with the lock's
+    previous list_elem to this lock, thus negating 
+    prior previous waiters */
+  intr_level = intr_disable ();
+  int current_priority = t->priority;
   if (lock_try_acquire (lock)) 
     {
-      lock->original_priority = thread_current ()->priority;
-      thread_current ()->receiver = NULL;
-      return;
-    } 
-  else if (thread_current ()->priority > lock->holder->priority)
+      if (list_empty (t->acquired_locks)
+        t->static_priority = current_priority;  
+      list_push_back (&t->acquired_locks);
+    }/* donate */ 
+  else
     {
-      thread_current ()->receiver = lock;
-      struct lock *cur = lock;
-      int count = 0;
-      while (cur != NULL && count < 9) 
+      t->waiting_for_lock = lock;
+      if (current_priority > lock->holder->priority)
         {
-          cur->holder->priority = thread_current ()->priority;
-          if (cur->holder->thread_pl)
-            plist_update_elem (cur->holder->thread_pl,
-                               &cur->holder->elem,
-                               cur->holder->priority);
-          cur = cur->holder->receiver;
-          count++;       
+          struct lock *cur;
+          int count = 0;
+          for (cur = lock; cur != NULL && count < 9;
+               cur = cur->holder->waiting_for_lock) 
+            {
+               if (cur->holder->priority < current_priority)
+                 {
+                   cur->holder->priority = current_priority;
+                   plist_update_elem (cur->holder->thread_pl,
+                                      &cur->holder->elem,
+                                      cur->holder->priority);
+                 }
+              else break;
+              if (!cur->holder->thread_pl)
+                break;
+              count++;       
+            }
         }
+      intr_set_level (old_level);
+      sema_down (&lock->semaphore);
+      t->waiting_for_lock = NULL;
+      lock->holder = t;
+      lock->original_priority = current->priority;
     }
-  sema_down (&lock->semaphore);
-  lock->holder = thread_current ();
-  lock->original_priority = thread_current ()->priority;
-  thread_current ()->receiver = NULL;
+  intr_set_level (old_level);
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -268,7 +280,26 @@ lock_release (struct lock *lock)
 {
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
-  thread_current ()->priority = lock->original_priority;
+
+  struct thread *t = thread_current ();
+  list_remove (&lock->lock_stack_elem);
+  if (list_empty (&t->acquired_locks))
+    thread_current ()->priority = lock->original_priority;
+  else
+    {
+      int max_donatable_pri = 0;
+      struct lock *acquired_lock;
+      for (acquired_lock = list_begin (&t->acquired_locks);
+           acquired_lock != list_end (&t->acquired_locks);
+           acquired_lock = list_next (acquired_lock))
+        {
+          int highest_pri_waiter = plist_top_priority (&acquired_lock->semaphore.waiters);
+          if (highest_pri_waiter > max_donatable_pri)
+            max_donatable_pri = highest_pri_waiter;
+        }
+      if (t->priority < max_donatable_pri)
+        t->priority = max_donatable_pri;
+    }
   lock->holder = NULL;
   sema_up (&lock->semaphore);
 }

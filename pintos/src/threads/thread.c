@@ -104,6 +104,7 @@ thread_init (void)
   plist_init (&ready_list);
   list_init (&all_list);
   list_init (&sleeping_list);
+
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
   init_thread (initial_thread, "main", PRI_DEFAULT);
@@ -427,7 +428,10 @@ thread_set_priority (int new_priority)
 int
 thread_get_priority (void)
 {
-  return thread_current ()->priority;
+  struct thread *t = thread_current ();
+  if (t->static_priority != -1)
+    return static_priority;
+  return t->priority;
 }
 
 /* Recalculates the current thread's priority. */
@@ -600,13 +604,17 @@ init_thread (struct thread *t, const char *name, int priority)
     t->priority = 0;
   else
     t->priority = priority;
+  t->static_priority = -1;
   t->magic = THREAD_MAGIC;
   t->nice = 0;
   t->recent_cpu = 0;
   t->start = -1;
   t->sleep = -1;
   t->thread_pl = NULL;
-  
+
+  /*initialize the stack of acquired locks*/  
+  list_init (&t->acquired_lock_stack);
+  t->waiting_for_lock = NULL;
   list_push_back (&all_list, &t->allelem);
   intr_set_level (old_level);
 }
