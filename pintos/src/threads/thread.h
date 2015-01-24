@@ -88,7 +88,7 @@ struct thread
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority that doesn't change from donations. */
-    int donated_priority;               /* Priority that changes with donations. */
+    int original_priority;              /* Priority of the thread before donations. */
     struct list_elem allelem;           /* List element for all threads list. */
     int nice;                           /* How nice a thread is to let other threads schedule. */
     int recent_cpu;                     /* Recently used CPU by thread. */
