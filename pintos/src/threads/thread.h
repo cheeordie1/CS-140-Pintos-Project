@@ -99,7 +99,7 @@ struct thread
     bool donated;                       /* Boolean to let thread donation know when we get donated to. */
 
     struct priority_list *thread_pl;    /* Priority list that currently contains this thread. */
-    struct lock *waiting_for_lock;      /* Lock that the thread is waiting on. */ 
+    struct thread *waiting_for_tlock;   /* Lock that the thread is waiting on. */ 
     struct list acquired_locks;         /* List of locks that this thread has acquired. */
   
     /* Shared between thread.c and synch.c. */

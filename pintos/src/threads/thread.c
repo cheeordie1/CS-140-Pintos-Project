@@ -257,6 +257,7 @@ thread_create (const char *name, int priority,
 void
 thread_update_timers (void)
 {
+  struct thread *running_t = thread_current ();
   struct list_elem * cur;
   for (cur = list_begin (&sleeping_list); 
       cur != list_end (&sleeping_list); )
@@ -269,7 +270,8 @@ thread_update_timers (void)
           plist_push_back (&ready_list, &t->elem, t->priority);
           t->thread_pl = &ready_list;
           t->status = THREAD_READY;
-          intr_yield_on_return ();
+          if (t->priority > running_t->priority)
+            intr_yield_on_return ();
         } else 
           cur = list_next(cur);
     }
@@ -426,7 +428,6 @@ thread_set_priority (int new_priority)
   struct thread *t = thread_current ();
 
   old_level = intr_disable ();
-  
   t->original_priority = new_priority;
   if (t->donated) 
     {
@@ -667,7 +668,7 @@ init_thread (struct thread *t, const char *name, int priority)
 
   /*initialize the stack of acquired locks*/  
   list_init (&t->acquired_locks);
-  t->waiting_for_lock = NULL;
+  t->waiting_for_tlock = NULL;
   list_push_back (&all_list, &t->allelem);
   intr_set_level (old_level);
 }

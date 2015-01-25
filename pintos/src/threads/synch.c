@@ -205,54 +205,43 @@ void
 lock_acquire (struct lock *lock)
 {
   enum intr_level old_level; 
-  struct thread *t = thread_current ();
 
   ASSERT (lock != NULL);
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
 
-
   old_level = intr_disable ();
+  struct thread *t = thread_current ();
   int current_priority = t->priority;
-  if (lock_try_acquire (lock)) 
-    {
-      if (list_empty (&t->acquired_locks))
-        t->original_priority = current_priority;  
-      list_push_back (&t->acquired_locks, &lock->lock_stack_elem);
-      intr_set_level (old_level);
-      return;
-    }/* donate */ 
+  if (lock_try_acquire (lock))
+    intr_set_level (old_level);
   else
     {
-      t->waiting_for_lock = lock;
+      t->waiting_for_tlock = lock->holder;
+      /* Donate. */ // don't you have to set the donated bool?
       if (current_priority > lock->holder->priority)
         {
-          struct lock *cur;
+          struct thread *cur;
           int count = 0;
-          for (cur = lock; cur != NULL && count < 9;
-               cur = cur->holder->waiting_for_lock) 
+          for (cur = lock->holder; cur != NULL && count < 9;
+               cur = cur->waiting_for_tlock) 
             {
-              if (cur->holder->priority < current_priority)
-                {
-                  cur->holder->priority = current_priority;
-                  plist_update_elem (cur->holder->thread_pl,
-                                     &cur->holder->elem,
-                                     cur->holder->priority);
-                }
-              else break;
-              if (!cur->holder->thread_pl)
+              if (cur->priority >= current_priority) 
                 break;
+              cur->priority = current_priority;
+              cur->donated = true;
+              plist_update_elem (cur->thread_pl,
+                                 &cur->elem,
+                                 cur->priority);
               count++;       
             }
         }
       intr_set_level (old_level);
       sema_down (&lock->semaphore);
-      t->waiting_for_lock = NULL;
-      if (t->original_priority < 0)
-        t->original_priority = current_priority;
-      list_push_back (&t->acquired_locks, &lock->lock_stack_elem);
-      lock->holder = t;
     }
+    t->waiting_for_tlock = NULL;
+    lock->holder = t;
+    list_push_back (&t->acquired_locks, &lock->lock_stack_elem);
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -290,41 +279,38 @@ lock_release (struct lock *lock)
   list_remove (&lock->lock_stack_elem);
   if (list_empty (&t->acquired_locks))
     {
-      if (t->original_priority >= 0)
-        t->priority = t->original_priority;
+      if (t->donated)
+        {
+          t->priority = t->original_priority;
+          t->donated = false;
+        }
     }
   else
     {
       int max_donatable_pri = 0;
-      struct lock *acquired_lock;
       struct list_elem *cur_lock;
       for (cur_lock = list_begin (&t->acquired_locks);
            cur_lock != list_end (&t->acquired_locks);
            cur_lock = list_next (cur_lock))
         {
-          acquired_lock = list_entry (cur_lock, struct lock, lock_stack_elem);
-          int highest_pri_waiter = plist_top_priority (&acquired_lock->semaphore.waiters);
-          if (highest_pri_waiter > max_donatable_pri)
-            max_donatable_pri = highest_pri_waiter;
-        }
-      if (t->original_priority < 0)
-        {
-          if (t->priority < max_donatable_pri)
+          struct lock *acquired_lock = list_entry (cur_lock, struct lock, lock_stack_elem);
+          if (!plist_empty (&acquired_lock->semaphore.waiters))
             {
-              t->original_priority = t->priority;
-              t->priority = max_donatable_pri;
-            } 
+              int highest_pri_waiter = plist_top_priority (&acquired_lock->semaphore.waiters);
+              if (highest_pri_waiter > max_donatable_pri)
+                max_donatable_pri = highest_pri_waiter;
+            }
         }
-      else
+        if (t->original_priority < max_donatable_pri)
+          t->priority = max_donatable_pri;
+        else
         { 
-          if (t->original_priority < max_donatable_pri)
-            t->priority = max_donatable_pri;
-          else
-            t->priority = t->original_priority;
+          t->priority = t->original_priority;
+          t->donated = false;
         }
     }
+  
   lock->holder = NULL;
-  t->original_priority = -1;
   sema_up (&lock->semaphore);
 }
 
