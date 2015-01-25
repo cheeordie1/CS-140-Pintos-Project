@@ -194,7 +194,13 @@ lock_init (struct lock *lock)
    This function may sleep, so it must not be called within an
    interrupt handler.  This function may be called with
    interrupts disabled, but interrupts will be turned back on if
-   we need to sleep. */
+   we need to sleep.
+
+   If a thread with a lower priority has this lock,
+   donate this priority to that set this next to 
+   thread with the lock set thread with the lock's
+   previous list_elem to this lock, thus negating 
+   prior previous waiters */
 void
 lock_acquire (struct lock *lock)
 {
@@ -205,11 +211,7 @@ lock_acquire (struct lock *lock)
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
 
- /* If a thread with a lower priority has this lock,
-    donate this priority to that set this next to 
-    thread with the lock set thread with the lock's
-    previous list_elem to this lock, thus negating 
-    prior previous waiters */
+
   old_level = intr_disable ();
   int current_priority = t->priority;
   if (lock_try_acquire (lock)) 
@@ -412,7 +414,9 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED)
   ASSERT (!intr_context ());
   ASSERT (lock_held_by_current_thread (lock));
 
+  enum intr_level old_level = intr_disable ();
   cond_sort_priority (cond);
+  intr_set_level (old_level);
   if (!plist_empty (&cond->waiters))  
     sema_up (&list_entry (plist_pop_front (&cond->waiters),
                           struct semaphore_elem, elem)->semaphore);

@@ -22,7 +22,7 @@ void plist_init (struct priority_list *pl);
 struct list_elem *plist_pop_front (struct priority_list *pl);
 void plist_push_back (struct priority_list *pl, struct list_elem *e,
                       int priority);
-void plist_remove (struct priority_list *pl, struct list_elem *e);
+void plist_remove (struct list_elem *e);
 int plist_size (struct priority_list *pl);
 int plist_top_priority (struct priority_list *pl);
 void plist_update_elem (struct priority_list *pl, struct list_elem *e,

@@ -30,7 +30,7 @@
 00000000000i[     ]   SB16 support: no
 00000000000i[     ]   USB support: no
 00000000000i[     ]   VGA extension support: vbe
-00000000000i[MEM0 ] allocated memory at 0x7f192b7e5010. after alignment, vector=0x7f192b7e6000
+00000000000i[MEM0 ] allocated memory at 0x7f864c5c1010. after alignment, vector=0x7f864c5c2000
 00000000000i[MEM0 ] 4.00MB
 00000000000i[MEM0 ] mem block size = 0x00100000, blocks=4
 00000000000i[MEM0 ] rom at 0xfffe0000/131072 ('/usr/class/cs140/x86_64/share/bochs/BIOS-bochs-latest')
@@ -62,7 +62,7 @@
 00000000000i[     ] init_dev of 'keyboard' plugin device by virtual method
 00000000000i[KBD  ] will paste characters every 400 keyboard ticks
 00000000000i[     ] init_dev of 'harddrv' plugin device by virtual method
-00000000000i[HD   ] HD on ata0-0: '/tmp/XNhciowbEn.dsk', 'flat' mode
+00000000000i[HD   ] HD on ata0-0: '/tmp/GmHByH8ggN.dsk', 'flat' mode
 00000000000i[IMG  ] hd_size: 516096
 00000000000i[HD   ] ata0-0: using specified geometry: CHS=1/16/63
 00000000000i[HD   ] Using boot sequence disk, none, none
@@ -179,7 +179,15 @@
 00001839180i[BIOS ] ata0-0: PCHS=1/16/63 translation=none LCHS=1/16/63
 00005717573i[BIOS ] IDE time out
 00008761641i[BIOS ] Booting from 0000:7c00
-00009292397i[MEM0 ] allocate_block: block=0x1 used 0x3 of 0x4
-00009336986i[MEM0 ] allocate_block: block=0x2 used 0x4 of 0x4
-00017353839i[NGUI ] ips = 17.354M
-00047110024i[NGUI ] ips = 29.756M
+00009294110i[MEM0 ] allocate_block: block=0x1 used 0x3 of 0x4
+00009338699i[MEM0 ] allocate_block: block=0x2 used 0x4 of 0x4
+00052261452i[NGUI ] ips = 52.261M
+00101180694i[NGUI ] ips = 48.919M
+00150113686i[NGUI ] ips = 48.933M
+00199032117i[NGUI ] ips = 48.918M
+00247926858i[NGUI ] ips = 48.895M
+00296832575i[NGUI ] ips = 48.906M
+00345784913i[NGUI ] ips = 48.952M
+00394746669i[NGUI ] ips = 48.962M
+00443500186i[NGUI ] ips = 48.754M
+00492459249i[NGUI ] ips = 48.959M
