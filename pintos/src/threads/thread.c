@@ -161,7 +161,7 @@ thread_tick (void)
     {
       if (t != idle_thread)
         {
-          add_fpn (t->recent_cpu, 1);
+          t->recent_cpu = add_fpn (t->recent_cpu, 1);
           t->recently_up = true;
         } 
  
@@ -464,7 +464,7 @@ thread_calculate_priority (struct thread *t)
   
   old_level = intr_disable ();
   /* Calculates (recent_cpu / 4). */
-  fp quarter_cpu = div_fpn (conv_itofp (t->recent_cpu), 4);
+  fp quarter_cpu = div_fpn (t->recent_cpu, 4);
   
   /* Calculates  (PRI_MAX - (recent_cpu / 4)). */
   fp sub1 = sub_fpfp (conv_itofp(PRI_MAX), quarter_cpu);
@@ -485,7 +485,10 @@ thread_calculate_priority (struct thread *t)
 
   /* Yield if priority too low. */
   if (t->priority < plist_top_priority (&ready_list))
-    intr_yield_on_return ();
+  {
+    if (intr_context ()) intr_yield_on_return ();
+    else thread_yield ();
+  }
   intr_set_level (old_level);
 }
 
@@ -509,6 +512,7 @@ int
 thread_get_nice (void)
 {
   return thread_current ()->nice;
+
 }
 
 /* Returns 100 times the system load average. */
@@ -523,17 +527,16 @@ void
 thread_calculate_load_avg (void)
 {
   enum intr_level old_level;
-  fp product1 = mult_fpfp(div_fpn(conv_itofp(59), 60), conv_itofp(load_avg));
+  fp product1 = mult_fpfp (div_fpn (conv_itofp(59), 60), load_avg);
   old_level = intr_disable ();
   int num_ready = plist_size (&ready_list);
   if (thread_current () != NULL && thread_current () != idle_thread) num_ready++;
-  fp product2 = mult_fpfp(div_fpn(conv_itofp(1), 60), 
-                          conv_itofp (num_ready));
+  fp product2 = mult_fpfp(div_fpn(conv_itofp(1), 60), conv_itofp (num_ready));
   intr_set_level (old_level);
 
   load_avg = add_fpfp (product1, product2);
   load_avg_coefficient = div_fpfp (mult_fpn (load_avg, 2), 
-                                      add_fpn (mult_fpn (load_avg, 2), 1)); 
+                                   add_fpn (mult_fpn (load_avg, 2), 1)); 
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
@@ -549,10 +552,9 @@ void
 thread_calculate_recent_cpu (struct thread *t, void *aux UNUSED)
 {
   t->recently_up = true;
-  fp product = mult_fpfp(conv_itofp(load_avg_coefficient),
-                         conv_itofp(t->recent_cpu));
+  fp product = mult_fpfp(load_avg_coefficient, t->recent_cpu);
   fp sum = add_fpn(product, t->nice);
-  t->recent_cpu = rnconv_fptoi(sum);
+  t->recent_cpu = sum;
 }
 
 /* Update the priorities of all the threads with recently updated
