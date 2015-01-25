@@ -1,15 +1,14 @@
 #ifndef THREADS_SYNCH_H
 #define THREADS_SYNCH_H
 
-#include "threads/plist.h"
+#include <list.h>
 #include <stdbool.h>
-
 
 /* A counting semaphore. */
 struct semaphore 
   {
     unsigned value;                      /* Current value. */
-    priority_list waiters;        /* List of waiting threads. */
+    struct list waiters;        /* List of waiting threads. */
   };
 
 void sema_init (struct semaphore *, unsigned value);
@@ -25,11 +24,11 @@ struct lock
   {
     struct thread *holder;            /* Thread holding lock (for debugging). */
     struct semaphore semaphore;       /* Binary semaphore controlling access. */
-    struct list_elem lock_stack_elem; /* One lock in a list of acquired locks. */
+    struct list_elem lock_list_elem;  /* One lock in a list of acquired locks. */
   };
 
 void lock_init (struct lock *);
-void lock_donate (struct lock *holder, int donate_pri);
+void lock_donate (struct lock *lock, int donate_pri);
 void lock_acquire (struct lock *);
 bool lock_try_acquire (struct lock *);
 
@@ -39,7 +38,7 @@ bool lock_held_by_current_thread (const struct lock *);
 /* Condition variable. */
 struct condition 
   {
-    priority_list waiters;        /* list of semaphores with waiting threads. */
+    struct list waiters;        /* list of semaphores with waiting threads. */
   };
 
 void cond_init (struct condition *);

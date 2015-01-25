@@ -33,10 +33,8 @@
 #include "threads/thread.h"
 
 static void give_lock (struct lock *lock, struct thread *t);
-static bool sema_cmp (const struct list_elem *a, 
-                      const struct list_elem *b, void *aux);
 static bool cond_cmp (const struct list_elem *a, 
-                      const struct list_elem *b, void *aux);
+                      const struct list_elem *b, void *aux UNUSED);
 static int next_potential_donation (struct thread *t);
 
 void cond_sort_priority (struct condition *cond);
@@ -59,17 +57,6 @@ sema_init (struct semaphore *sema, unsigned value)
   list_init (&sema->waiters);
 }
 
-/* Compare the priority of two threads before inserting into a
-   semaphore. */
-bool
-sema_cmp (const struct list_elem *a, 
-          const struct list_elem *b, void *aux)
-{
-  struct thread *t_a = list_entry (a, struct thread, elem);
-  struct thread *t_b = list_entry (b, struct thread, elem);
-  return t_a->priority > t_b->priority;
-}
-
 /* Down or "P" operation on a semaphore.  Waits for SEMA's value
    to become positive and then atomically decrements it.
 
@@ -89,7 +76,7 @@ sema_down (struct semaphore *sema)
   while (sema->value == 0) 
     {
       list_insert_ordered (&sema->waiters, &thread_current ()->elem,
-                           sema_cmp, NULL);
+                           thread_cmp, NULL);
       thread_current ()->thread_pl = &sema->waiters;
       thread_block ();
     }
@@ -207,7 +194,7 @@ lock_init (struct lock *lock)
 }
 
 void
-lock_donate (struct lock *holder, int donate_pri)
+lock_donate (struct lock *lock, int donate_pri)
 {
   struct thread *cur;
   int count = 0;
@@ -220,7 +207,7 @@ lock_donate (struct lock *holder, int donate_pri)
       cur->donated = true;
       list_update_elem (cur->thread_pl,
                         &cur->elem,
-                        sema_cmp);
+                        thread_cmp);
       count++;       
     }
 }
@@ -231,7 +218,7 @@ give_lock (struct lock *lock, struct thread *t)
 {
   lock->holder = t; 
   t->waiting_for_tlock = NULL;
-  list_push_back (&t->acquired_locks, &lock->lock_stack_elem);
+  list_push_back (&t->acquired_locks, &lock->lock_list_elem);
 }
 
 /* Acquires LOCK, sleeping until it becomes available if
@@ -265,7 +252,7 @@ lock_acquire (struct lock *lock)
   else
     {
       t->waiting_for_tlock = lock->holder;
-      if (current_priority > lock->holder->priority)
+      if (current_priority > lock->holder->priority && !thread_mlfqs)
         lock_donate (lock, current_priority);
       intr_set_level (old_level);
       sema_down (&lock->semaphore);
@@ -307,13 +294,10 @@ next_potential_donation (struct thread *t)
        cur_lock != list_end (&t->acquired_locks);
        cur_lock = list_next (cur_lock))
     {
-      struct lock *acquired_lock = list_entry (cur_lock, struct lock, lock_stack_elem);
-      if (!list_empty (&acquired_lock->semaphore.waiters))
-       {
-         int highest_pri_waiter = plist_top_priority (&acquired_lock->semaphore.waiters);
-         if (highest_pri_waiter > max_donatable_pri)
-           max_donatable_pri = highest_pri_waiter;
-       }
+      struct lock *acquired_lock = list_entry (cur_lock, struct lock, lock_list_elem);
+      int highest_pri_waiter = thread_list_top_pri (&acquired_lock->semaphore.waiters);
+      if (highest_pri_waiter > max_donatable_pri)
+        max_donatable_pri = highest_pri_waiter;
     }
   return max_donatable_pri;
 }
@@ -326,31 +310,38 @@ next_potential_donation (struct thread *t)
 void
 lock_release (struct lock *lock) 
 {
+  enum intr_level old_level;
+
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
 
+  old_level = intr_disable ();
   struct thread *t = thread_current ();
-  list_remove (&lock->lock_stack_elem);
-  if (list_empty (&t->acquired_locks))
+  list_remove (&lock->lock_list_elem);
+  if (!thread_mlfqs)
     {
-      if (t->donated)
+      if (list_empty (&t->acquired_locks))
         {
-          t->priority = t->original_priority;
-          t->donated = false;
+          if (t->donated)
+            {
+              t->priority = t->original_priority;
+              t->donated = false;
+            }
         }
-    }
-  else
-    {
-      int max_donatable_pri = next_potential_donation (t);
-      if (t->original_priority < max_donatable_pri)
-        t->priority = max_donatable_pri;
       else
-        { 
-          t->priority = t->original_priority;
-          t->donated = false;
+        {
+          int max_donatable_pri = next_potential_donation (t);
+          if (t->original_priority < max_donatable_pri)
+            t->priority = max_donatable_pri;
+          else
+            { 
+              t->priority = t->original_priority;
+              t->donated = false;
+            }
         }
     }
   lock->holder = NULL;
+  intr_set_level (old_level);
   sema_up (&lock->semaphore);
 }
 
@@ -387,11 +378,12 @@ cond_init (struct condition *cond)
    semaphore. */
 bool
 cond_cmp (const struct list_elem *a, 
-          const struct list_elem *b, void *aux)
+          const struct list_elem *b, void *aux UNUSED)
 {
   struct semaphore_elem *se_a = list_entry(a, struct semaphore_elem, elem);
   struct semaphore_elem *se_b = list_entry(b, struct semaphore_elem, elem);
-  return sema_cmp (se_a, se_b);
+  return thread_cmp (list_begin (&se_a->semaphore.waiters),
+                     list_begin (&se_b->semaphore.waiters), NULL);
 }
 
 /* Atomically releases LOCK and waits for COND to be signaled by

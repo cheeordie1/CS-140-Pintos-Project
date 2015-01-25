@@ -100,8 +100,6 @@ struct list
     struct list_elem tail;      /* List tail. */
   };
 
-typedef struct list priority_list;
-
 /* Converts pointer to list element LIST_ELEM into a pointer to
    the structure that LIST_ELEM is embedded inside.  Supply the
    name of the outer structure STRUCT and the member name MEMBER
@@ -176,7 +174,7 @@ void list_insert_ordered (struct list *, struct list_elem *,
 void list_unique (struct list *, struct list *duplicates,
                   list_less_func *, void *aux);
 void list_update_elem (struct list *, struct list_elem *e,
-                       list_less_func *, int priority);
+                       list_less_func *);
 
 /* Max and min. */
 struct list_elem *list_max (struct list *, list_less_func *, void *aux);

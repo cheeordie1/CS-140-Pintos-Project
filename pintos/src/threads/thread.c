@@ -12,7 +12,6 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
-#include "threads/plist.h"
 
 #ifdef USERPROG
 #include "userprog/process.h"
@@ -25,7 +24,7 @@
 
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
-static struct priority_list ready_list;
+static struct list ready_list;
 
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
@@ -103,7 +102,7 @@ thread_init (void)
   ASSERT (intr_get_level () == INTR_OFF);
 
   lock_init (&tid_lock);
-  plist_init (&ready_list);
+  list_init (&ready_list);
   list_init (&all_list);
   list_init (&sleeping_list);
   
@@ -142,10 +141,8 @@ thread_tick (void)
   enum intr_level old_level;
   struct thread *t = thread_current ();
 
-  old_level = intr_disable ();
   if (!list_empty (&sleeping_list)) 
     thread_update_timers ();
-  intr_set_level (old_level);
 
   /* Update statistics. */
   if (t == idle_thread)
@@ -252,8 +249,30 @@ thread_create (const char *name, int priority,
   return tid;
 }
 
- 
+/* Compare the priority of two threads before inserting into a
+   list. */
+bool
+thread_cmp (const struct list_elem *a, 
+            const struct list_elem *b, void *aux UNUSED)
+{
+  struct thread *t_a = list_entry (a, struct thread, elem);
+  struct thread *t_b = list_entry (b, struct thread, elem);
+  return t_a->priority > t_b->priority;
+}
 
+/* Find the maximum priority in a list of threads */
+int
+thread_list_top_pri (struct list *list)
+{
+  ASSERT (list != NULL);
+
+  if (list_empty (list))
+    return PRI_MIN;
+  struct list_elem *top = list_begin (list);
+  return list_entry (top, struct thread, elem)->priority;
+}
+ 
+/* Check all of the sleeping threads and try to wake them up. */
 void
 thread_update_timers (void)
 {
@@ -265,9 +284,9 @@ thread_update_timers (void)
       struct thread * t = list_entry (cur, struct thread, elem);
       if (timer_elapsed (t->start) >= t->sleep)
         {
-          t->start = -1;
           cur = list_remove (&t->elem);
-          plist_push_back (&ready_list, &t->elem, t->priority);
+          list_insert_ordered (&ready_list, &t->elem,
+                               thread_cmp, NULL);
           t->thread_pl = &ready_list;
           t->status = THREAD_READY;
           if (t->priority > running_t->priority)
@@ -317,10 +336,10 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  plist_push_back (&ready_list, &t->elem, t->priority);
+  list_insert_ordered (&ready_list, &t->elem, thread_cmp, NULL);
   t->thread_pl = &ready_list;
   t->status = THREAD_READY;
-  if(thread_get_priority () < t->priority && old_level != INTR_OFF)
+  if(thread_get_priority () < thread_list_top_pri (&ready_list) && old_level != INTR_OFF)
     thread_yield ();
   intr_set_level (old_level);
 }
@@ -374,7 +393,7 @@ thread_exit (void)
      and schedule another process.  That process will destroy us
      when it calls thread_schedule_tail(). */
   intr_disable ();
-  plist_remove (&thread_current()->allelem);
+  list_remove (&thread_current()->allelem);
   thread_current ()->thread_pl = NULL;
   thread_current ()->status = THREAD_DYING;
   schedule ();
@@ -394,7 +413,7 @@ thread_yield (void)
   old_level = intr_disable ();
   if (cur != idle_thread)
     { 
-      plist_push_back (&ready_list, &cur->elem, cur->priority);
+      list_insert_ordered (&ready_list, &cur->elem, thread_cmp, NULL);
       cur->thread_pl = &ready_list;
     }
   cur->status = THREAD_READY;
@@ -439,7 +458,7 @@ thread_set_priority (int new_priority)
     }
   else
     t->priority = new_priority;
-  if (t->priority < plist_top_priority (&ready_list))
+  if (t->priority < thread_list_top_pri (&ready_list))
     thread_yield ();
   intr_set_level (old_level);
 }
@@ -448,10 +467,7 @@ thread_set_priority (int new_priority)
 int
 thread_get_priority (void)
 {
-  enum intr_level old_level = intr_disable ();
-  int ret_pri = thread_current ()->priority;
-  intr_set_level (old_level);
-  return ret_pri;
+  return thread_current ()->priority;
 }
 
 /* Recalculates a given thread's priority. */
@@ -475,20 +491,25 @@ thread_calculate_priority (struct thread *t)
   /* Change priority. */
   t->priority = rzconv_fptoi (new_priority);
   if (t->priority < PRI_MIN)
-   t->priority = PRI_MIN;
+    t->priority = PRI_MIN;
   else if (t->priority > PRI_MAX)
     t->priority = PRI_MAX;
   
   /* Update wait list or ready list. */
   if (t->thread_pl != NULL)
-    plist_update_elem (t->thread_pl, &t->elem, t->priority);
+    list_update_elem (t->thread_pl, &t->elem, thread_cmp);
 
   /* Yield if priority too low. */
-  if (t->priority < plist_top_priority (&ready_list))
-  {
-    if (intr_context ()) intr_yield_on_return ();
-    else thread_yield ();
-  }
+  if (t->priority < thread_list_top_pri (&ready_list))
+    {
+      if (intr_context ()) 
+        intr_yield_on_return ();
+      else
+        { 
+          intr_set_level (old_level); 
+          thread_yield ();
+        }
+    }
   intr_set_level (old_level);
 }
 
@@ -497,13 +518,9 @@ void
 thread_set_nice (int nice)
 {
   ASSERT (nice <= 20 && -20 <= nice);
-  enum intr_level old_level;
-
-  old_level = intr_disable ();
   struct thread *cur = thread_current ();
   cur->nice = nice;
   thread_calculate_priority (cur);
-  intr_set_level (old_level);
 }
 
 
@@ -526,13 +543,10 @@ thread_get_load_avg (void)
 void
 thread_calculate_load_avg (void)
 {
-  enum intr_level old_level;
   fp product1 = mult_fpfp (div_fpn (conv_itofp(59), 60), load_avg);
-  old_level = intr_disable ();
-  int num_ready = plist_size (&ready_list);
+  int num_ready = list_size (&ready_list);
   if (thread_current () != NULL && thread_current () != idle_thread) num_ready++;
-  fp product2 = mult_fpfp(div_fpn(conv_itofp(1), 60), conv_itofp (num_ready));
-  intr_set_level (old_level);
+  fp product2 = div_fpn(conv_itofp (num_ready), 60);
 
   load_avg = add_fpfp (product1, product2);
   load_avg_coefficient = div_fpfp (mult_fpn (load_avg, 2), 
@@ -657,7 +671,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->nice = 0;
   t->recent_cpu = 0;
   if (thread_mlfqs)
-    thread_calculate_priority (t);
+    t->priority = PRI_DEFAULT;
   else
     t->priority = priority;
   t->original_priority = t->priority;
@@ -696,9 +710,9 @@ alloc_frame (struct thread *t, size_t size)
 static struct thread *
 next_thread_to_run (void) 
 {
-  if (plist_empty (&ready_list))
+  if (list_empty (&ready_list))
     return idle_thread;
-  struct thread *ret = list_entry (plist_pop_front (&ready_list), struct thread, elem);
+  struct thread *ret = list_entry (list_pop_front (&ready_list), struct thread, elem);
   ret->thread_pl = NULL;
   return ret;
 }

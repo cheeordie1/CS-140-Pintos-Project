@@ -98,7 +98,7 @@ struct thread
     bool recently_up;                   /* Boolean to let thread mlfqs know when we update. */
     bool donated;                       /* Boolean to let thread donation know when we get donated to. */
 
-    struct priority_list *thread_pl;    /* Priority list that currently contains this thread. */
+    struct list *thread_pl;             /* Priority list that currently contains this thread. */
     struct thread *waiting_for_tlock;   /* Lock that the thread is waiting on. */ 
     struct list acquired_locks;         /* List of locks that this thread has acquired. */
   
@@ -127,6 +127,10 @@ void thread_print_stats (void);
 
 typedef void thread_func (void *aux);
 tid_t thread_create (const char *name, int priority, thread_func *, void *);
+
+bool thread_cmp (const struct list_elem *a, 
+                 const struct list_elem *b, void *aux UNUSED);
+int thread_list_top_pri (struct list *list);
 
 void thread_block (void);
 void thread_unblock (struct thread *);
