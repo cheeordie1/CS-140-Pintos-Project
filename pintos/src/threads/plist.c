@@ -4,38 +4,32 @@
 void 
 plist_init (struct priority_list *pl)
 { 
-  ASSERT (pl != NULL);
- 
-  int curr_b;
-  for (curr_b = 0; curr_b <= PRI_MAX; curr_b++)
-    list_init (&pl->pl_buckets[curr_b]);
+  list_init (pl);
 }
 
 int
 plist_size (struct priority_list *pl)
 {
-  ASSERT (pl != NULL);
-
-  int size = 0;
-  int curr_b;
-  for (curr_b = 0; curr_b <= PRI_MAX; curr_b++)
-    {
-      size += list_size (&pl->pl_buckets[curr_b]);
-    }
-  return size; 
+  return list_size (pl); 
 }
+
+bool
+plist_cmp (const struct list_elem *a, const struct list_elem *b, void *aux) 
+  {
+    
+  }
 
 /* Adds an element to the ready list. Uses the element's priority to place the
    element in the correct list. Must pass a pointer to a list of priority lists
    from the element that we are inserting into the list if the elements are
    expected to change priority. */
 void
-plist_push_back (struct priority_list *pl, struct list_elem *e, int priority)
+plist_push_back (struct priority_list *pl, struct list_elem *e, list_less_function *cmp, int priority)
 {
   ASSERT (priority >= PRI_MIN && priority <= PRI_MAX);
   ASSERT (pl != NULL);  
 
-  list_push_back (&pl->pl_buckets[PRI_MAX - priority], e);
+  list_insert_ordered (pl, e, plist_cmp, &priority);
 }
 
 /* Removes an element from the ready list. */
@@ -56,14 +50,7 @@ plist_pop_front (struct priority_list *pl)
 {
   ASSERT (pl != NULL);
 
-  int curr_b;
-  for (curr_b = 0; curr_b <= PRI_MAX; curr_b++)
-    { 
-      if (!list_empty (&pl->pl_buckets[curr_b])){
-        pl->size--;
-        return list_pop_front (&pl->pl_buckets[curr_b]);
-      }
-    }
+  list_pop_front (pl);
   return NULL;
 }
 

@@ -9,10 +9,12 @@
 struct semaphore 
   {
     unsigned value;                      /* Current value. */
-    struct priority_list waiters;        /* List of waiting threads. */
+    priority_list waiters;        /* List of waiting threads. */
   };
 
 void sema_init (struct semaphore *, unsigned value);
+bool sema_cmp (const struct list_elem *a, 
+               const struct list_elem *b, void *aux);
 void sema_down (struct semaphore *);
 bool sema_try_down (struct semaphore *);
 void sema_up (struct semaphore *);
@@ -27,15 +29,17 @@ struct lock
   };
 
 void lock_init (struct lock *);
+void lock_donate (struct lock *holder, int donate_pri);
 void lock_acquire (struct lock *);
 bool lock_try_acquire (struct lock *);
+
 void lock_release (struct lock *);
 bool lock_held_by_current_thread (const struct lock *);
 
 /* Condition variable. */
 struct condition 
   {
-    struct priority_list waiters;        /* list of semaphores with waiting threads. */
+    priority_list waiters;        /* list of semaphores with waiting threads. */
   };
 
 void cond_init (struct condition *);

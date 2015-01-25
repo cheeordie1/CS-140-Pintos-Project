@@ -11,11 +11,7 @@
    via the same method of control used to create lists. Because the plist
    builds off of list functionality, a data structure can only be in as
    many plists as it has list_elem members at a given time. */
-struct priority_list
-  {
-    int size;
-    struct list pl_buckets[PRI_MAX + 1];
-  };
+typedef struct list priority_list;
 
 bool plist_empty (struct priority_list *pl);
 void plist_init (struct priority_list *pl);
