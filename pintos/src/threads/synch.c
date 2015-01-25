@@ -320,23 +320,15 @@ lock_release (struct lock *lock)
   list_remove (&lock->lock_list_elem);
   if (!thread_mlfqs)
     {
-      if (list_empty (&t->acquired_locks))
-        {
-          if (t->donated)
-            {
-              t->priority = t->original_priority;
-              t->donated = false;
-            }
-        }
-      else
+      t->priority = t->original_priority;
+      t->donated = false;
+      if (!list_empty (&t->acquired_locks))
         {
           int max_donatable_pri = next_potential_donation (t);
           if (t->original_priority < max_donatable_pri)
-            t->priority = max_donatable_pri;
-          else
-            { 
-              t->priority = t->original_priority;
-              t->donated = false;
+            {
+              t->priority = max_donatable_pri;
+              t->donated = true;
             }
         }
     }

@@ -143,6 +143,9 @@ thread_tick (void)
 
   if (!list_empty (&sleeping_list)) 
     thread_update_timers ();
+  
+  if (t->priority > thread_list_top_pri (&ready_list))
+    intr_yield_on_return ();
 
   /* Update statistics. */
   if (t == idle_thread)
@@ -165,13 +168,16 @@ thread_tick (void)
       /* Update recent cpu. Update load avg. */
       if (timer_ticks () % TIMER_FREQ == 0)
         {  
+          thread_calculate_load_avg ();
           old_level = intr_disable ();
           thread_foreach (thread_calculate_recent_cpu, NULL);
           intr_set_level (old_level);
-          thread_calculate_load_avg ();
         }
   
-      /* Update Priority for all threads with recent changes in priority. */
+      /* Calculate recent CPU for all threads.
+         Then update Priority for all threads with
+         recent changes in priority. */
+        
       if (timer_ticks () % TIME_SLICE == 0)
         {
           old_level = intr_disable ();
@@ -276,7 +282,6 @@ thread_list_top_pri (struct list *list)
 void
 thread_update_timers (void)
 {
-  struct thread *running_t = thread_current ();
   struct list_elem * cur;
   for (cur = list_begin (&sleeping_list); 
       cur != list_end (&sleeping_list); )
@@ -289,8 +294,6 @@ thread_update_timers (void)
                                thread_cmp, NULL);
           t->thread_pl = &ready_list;
           t->status = THREAD_READY;
-          if (t->priority > running_t->priority)
-            intr_yield_on_return ();
         } else 
           cur = list_next(cur);
     }
@@ -466,8 +469,11 @@ thread_set_priority (int new_priority)
 /* Returns the current thread's priority. */
 int
 thread_get_priority (void)
-{
-  return thread_current ()->priority;
+{ 
+  enum intr_level old_level = intr_disable ();
+  int ret_pri = thread_current ()->priority;
+  intr_set_level (old_level);
+  return ret_pri;
 }
 
 /* Recalculates a given thread's priority. */
@@ -518,18 +524,15 @@ void
 thread_set_nice (int nice)
 {
   ASSERT (nice <= 20 && -20 <= nice);
-  struct thread *cur = thread_current ();
-  cur->nice = nice;
-  thread_calculate_priority (cur);
+  thread_current ()->nice = nice;
+  thread_calculate_priority (thread_current ());
 }
-
 
 /* Returns the current thread's nice value. */
 int
 thread_get_nice (void)
 {
   return thread_current ()->nice;
-
 }
 
 /* Returns 100 times the system load average. */
