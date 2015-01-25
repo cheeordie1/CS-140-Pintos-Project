@@ -21,14 +21,13 @@ static thread_func b_thread_func;
 void
 test_priority_donate_multiple (void) 
 {
-  /*
   struct lock a, b;
 
   /* This test does not work with the MLFQS. */
-//  ASSERT (!thread_mlfqs);
+  ASSERT (!thread_mlfqs);
 
   /* Make sure our priority is the default. */
-/*  ASSERT (thread_get_priority () == PRI_DEFAULT);
+  ASSERT (thread_get_priority () == PRI_DEFAULT);
 
   lock_init (&a);
   lock_init (&b);
@@ -48,12 +47,11 @@ test_priority_donate_multiple (void)
   msg ("Thread b should have just finished.");
   msg ("Main thread should have priority %d.  Actual priority: %d.",
        PRI_DEFAULT + 1, thread_get_priority ());
-  *//*
+  
   lock_release (&a);
   msg ("Thread a should have just finished.");
   msg ("Main thread should have priority %d.  Actual priority: %d.",
        PRI_DEFAULT, thread_get_priority ());
-  */
 }
 
 static void

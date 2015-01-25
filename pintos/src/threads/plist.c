@@ -40,10 +40,9 @@ plist_push_back (struct priority_list *pl, struct list_elem *e, int priority)
 
 /* Removes an element from the ready list. */
 void
-plist_remove (struct priority_list *pl, struct list_elem *e)
+plist_remove (struct list_elem *e)
 {
   ASSERT (e != NULL);
-  ASSERT (pl != NULL);
 
   list_remove (e);
 }
@@ -106,6 +105,6 @@ void
 plist_update_elem (struct priority_list *pl, struct list_elem *e, int priority)
 {
   if (pl == NULL) return;
-  plist_remove (pl, e);
+  plist_remove (e);
   plist_push_back (pl, e, priority);
 }

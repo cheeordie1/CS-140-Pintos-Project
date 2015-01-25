@@ -194,17 +194,54 @@ lock_init (struct lock *lock)
    This function may sleep, so it must not be called within an
    interrupt handler.  This function may be called with
    interrupts disabled, but interrupts will be turned back on if
-   we need to sleep. */
+   we need to sleep.
+
+   If a thread with a lower priority has this lock,
+   donate this priority to that set this next to 
+   thread with the lock set thread with the lock's
+   previous list_elem to this lock, thus negating 
+   prior previous waiters */
 void
 lock_acquire (struct lock *lock)
 {
+  enum intr_level old_level; 
+
   ASSERT (lock != NULL);
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
-  // lock->holder->original_priority = lock->holder->priority;
-  // lock->holder->priority = thread_current () -> priority;
-  sema_down (&lock->semaphore);
-  lock->holder = thread_current ();
+
+  old_level = intr_disable ();
+  struct thread *t = thread_current ();
+  int current_priority = t->priority;
+  if (lock_try_acquire (lock))
+    intr_set_level (old_level);
+  else
+    {
+      t->waiting_for_tlock = lock->holder;
+      /* Donate. */ // don't you have to set the donated bool?
+      if (current_priority > lock->holder->priority)
+        {
+          struct thread *cur;
+          int count = 0;
+          for (cur = lock->holder; cur != NULL && count < 9;
+               cur = cur->waiting_for_tlock) 
+            {
+              if (cur->priority >= current_priority) 
+                break;
+              cur->priority = current_priority;
+              cur->donated = true;
+              plist_update_elem (cur->thread_pl,
+                                 &cur->elem,
+                                 cur->priority);
+              count++;       
+            }
+        }
+      intr_set_level (old_level);
+      sema_down (&lock->semaphore);
+    }
+    t->waiting_for_tlock = NULL;
+    lock->holder = t;
+    list_push_back (&t->acquired_locks, &lock->lock_stack_elem);
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -237,7 +274,42 @@ lock_release (struct lock *lock)
 {
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
-  // Change back to old priority (lock->holder)
+
+  struct thread *t = thread_current ();
+  list_remove (&lock->lock_stack_elem);
+  if (list_empty (&t->acquired_locks))
+    {
+      if (t->donated)
+        {
+          t->priority = t->original_priority;
+          t->donated = false;
+        }
+    }
+  else
+    {
+      int max_donatable_pri = 0;
+      struct list_elem *cur_lock;
+      for (cur_lock = list_begin (&t->acquired_locks);
+           cur_lock != list_end (&t->acquired_locks);
+           cur_lock = list_next (cur_lock))
+        {
+          struct lock *acquired_lock = list_entry (cur_lock, struct lock, lock_stack_elem);
+          if (!plist_empty (&acquired_lock->semaphore.waiters))
+            {
+              int highest_pri_waiter = plist_top_priority (&acquired_lock->semaphore.waiters);
+              if (highest_pri_waiter > max_donatable_pri)
+                max_donatable_pri = highest_pri_waiter;
+            }
+        }
+        if (t->original_priority < max_donatable_pri)
+          t->priority = max_donatable_pri;
+        else
+        { 
+          t->priority = t->original_priority;
+          t->donated = false;
+        }
+    }
+  
   lock->holder = NULL;
   sema_up (&lock->semaphore);
 }
@@ -328,7 +400,9 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED)
   ASSERT (!intr_context ());
   ASSERT (lock_held_by_current_thread (lock));
 
+  enum intr_level old_level = intr_disable ();
   cond_sort_priority (cond);
+  intr_set_level (old_level);
   if (!plist_empty (&cond->waiters))  
     sema_up (&list_entry (plist_pop_front (&cond->waiters),
                           struct semaphore_elem, elem)->semaphore);
