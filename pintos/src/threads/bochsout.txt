@@ -30,7 +30,7 @@
 00000000000i[     ]   SB16 support: no
 00000000000i[     ]   USB support: no
 00000000000i[     ]   VGA extension support: vbe
-00000000000i[MEM0 ] allocated memory at 0x7f5eebd65010. after alignment, vector=0x7f5eebd66000
+00000000000i[MEM0 ] allocated memory at 0x7ff564010010. after alignment, vector=0x7ff564011000
 00000000000i[MEM0 ] 4.00MB
 00000000000i[MEM0 ] mem block size = 0x00100000, blocks=4
 00000000000i[MEM0 ] rom at 0xfffe0000/131072 ('/usr/class/cs140/x86_64/share/bochs/BIOS-bochs-latest')
@@ -62,7 +62,7 @@
 00000000000i[     ] init_dev of 'keyboard' plugin device by virtual method
 00000000000i[KBD  ] will paste characters every 400 keyboard ticks
 00000000000i[     ] init_dev of 'harddrv' plugin device by virtual method
-00000000000i[HD   ] HD on ata0-0: '/tmp/pdoqrnuoBS.dsk', 'flat' mode
+00000000000i[HD   ] HD on ata0-0: '/tmp/izsBzC9xmS.dsk', 'flat' mode
 00000000000i[IMG  ] hd_size: 516096
 00000000000i[HD   ] ata0-0: using specified geometry: CHS=1/16/63
 00000000000i[HD   ] Using boot sequence disk, none, none
@@ -179,10 +179,24 @@
 00001839180i[BIOS ] ata0-0: PCHS=1/16/63 translation=none LCHS=1/16/63
 00005717573i[BIOS ] IDE time out
 00008761641i[BIOS ] Booting from 0000:7c00
-00009179916i[MEM0 ] allocate_block: block=0x1 used 0x3 of 0x4
-00009221047i[MEM0 ] allocate_block: block=0x2 used 0x4 of 0x4
-00192016017i[NGUI ] ips = 192.016M
-00624556821i[NGUI ] ips = 432.541M
-01057153670i[NGUI ] ips = 432.597M
-01489799000i[NGUI ] ips = 432.645M
-01922397536i[NGUI ] ips = 432.599M
+00009180802i[MEM0 ] allocate_block: block=0x1 used 0x3 of 0x4
+00009221933i[MEM0 ] allocate_block: block=0x2 used 0x4 of 0x4
+00075240385i[NGUI ] ips = 75.240M
+00140473128i[NGUI ] ips = 65.233M
+00240251642i[NGUI ] ips = 99.779M
+00736919398i[NGUI ] ips = 496.668M
+01233627470i[NGUI ] ips = 496.708M
+01730455000i[NGUI ] ips = 496.828M
+02227272933i[NGUI ] ips = 496.818M
+02723781454i[NGUI ] ips = 496.509M
+03219849264i[NGUI ] ips = 496.068M
+03716433027i[NGUI ] ips = 496.584M
+04213314698i[NGUI ] ips = 496.882M
+04710072448i[NGUI ] ips = 496.758M
+05206550665i[NGUI ] ips = 496.478M
+05702618363i[NGUI ] ips = 496.068M
+06199223141i[NGUI ] ips = 496.605M
+06695604249i[NGUI ] ips = 496.381M
+07191882126i[NGUI ] ips = 496.278M
+07688680733i[NGUI ] ips = 496.799M
+08185407787i[NGUI ] ips = 496.727M
