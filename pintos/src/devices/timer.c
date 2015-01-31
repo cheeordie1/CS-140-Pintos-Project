@@ -29,8 +29,6 @@ static bool too_many_loops (unsigned loops);
 static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
 static void real_time_delay (int64_t num, int32_t denom);
-static void update_timers (struct thread *t, void *aux);
-
 
 /* Sets up the timer to interrupt TIMER_FREQ times per second,
    and registers the corresponding interrupt. */
@@ -97,7 +95,7 @@ timer_sleep (int64_t ticks)
   old_level = intr_disable ();
   thread_current ()->start = timer_ticks ();
   thread_current ()->sleep = ticks;
-  thread_block();
+  thread_sleep();
   intr_set_level (old_level);
 }
 
@@ -171,29 +169,11 @@ timer_print_stats (void)
   printf ("Timer: %"PRId64" ticks\n", timer_ticks ());
 }
 
-void
-update_timers (struct thread *t, void *aux)
-{
-  if (t->start < 0)
-    return;
-  if (timer_elapsed (t->start) >= t->sleep)
-    {
-      t->start = -1
-      plist_push_back (&ready_list, &t->elem, t->priority);
-      t->thread_pl = &ready_list;
-      t->status = THREAD_READY;
-      intr_yield_on_return ();
-    }
-}
-
 /* Timer interrupt handler. */
 static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
-  enum intr_level old_level = intr_disable ();
-  thread_foreach (update_timers, NULL);
-  intr_set_level (old_level);
   thread_tick ();
 }
 

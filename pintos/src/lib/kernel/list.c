@@ -485,6 +485,18 @@ list_unique (struct list *list, struct list *duplicates,
       elem = next;
 }
 
+/* Update the priority of a given element in the priority list.
+   This function removes the element and inserts it back into the
+   list, assuming its priority has changed. */
+void
+list_update_elem (struct list *list, struct list_elem *e, list_less_func *cmp)
+{
+  ASSERT (list != NULL);
+
+  list_remove (e);
+  list_insert_ordered (list, e, cmp, NULL);
+}
+
 /* Returns the element in LIST with the largest value according
    to LESS given auxiliary data AUX.  If there is more than one
    maximum, returns the one that appears earlier in the list.  If
