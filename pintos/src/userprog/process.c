@@ -20,6 +20,29 @@
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
+static int parse_cmd_ln (char *cmdline, char **esp);
+
+const char *ignore_delimiters = " \t\r";
+
+/* Split the command line into words separated only by '\0'
+   null characters. */
+int
+parse_cmd_ln (char *cmdline, char **esp)
+{
+  int count = 0;
+  char *token, save_ptr;
+  for (token = strtok_r (cmd_line, ignore_delimiters, &save_ptr);
+       token != NULL;
+       token = strtok_r (NULL, ignore_delimiters, &save_ptr))
+  {
+    int read = strnlen (token, PGSIZE) + 1;
+    *esp = *esp - read;
+    strcpy (*esp, token, PGSIZE);
+    (*bytes_read) += read;
+    count++
+  }
+  return count;
+}
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -66,6 +89,22 @@ start_process (void *file_name_)
   if (!success) 
     thread_exit ();
 
+  /* Load has not failed. Push arguments onto the stack. */
+  size_t max_chars = strnlen (file_name, PGSIZE);
+  int argc = parse_cmd_ln (file_name, &if_.esp);
+  char *argv_data_ptr = if_.esp;
+  if_.esp = ((char *) if_.esp) - (&if_.esp % 4);
+  *--((char **)if_.esp) = 0;
+  for (int curr_str = 0; curr_str < argc; curr_str++)
+  {
+    *--((char **)if_.esp) = argv_data_ptr;
+    argv_data_ptr += strnlen (argv_data_ptr, PGSIZE) + 1;  
+  }
+  char **argv_data_ptr_strt = &if_.esp;
+  *--((char ***)if_.esp) = argv_ptr_strt;
+  *--((int *)if_.esp) = argc;
+  *--((void (**) ())if_.esp) = 0;
+
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
@@ -88,6 +127,8 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
+  while (true)
+    barrier ();
   return -1;
 }
 
