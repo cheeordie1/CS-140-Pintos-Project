@@ -17,9 +17,13 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+/* Delete later */
+#include "threads/synch.h"
 
 static thread_func start_process NO_RETURN;
-static bool load (const char *cmdline, void (**eip) (void), void **esp);
+static bool load (const char *file_name, char *cmdline, void (**eip) (void), void **esp);
+
+const char *ignore_delimiters = " \t\r";
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -50,7 +54,9 @@ process_execute (const char *file_name)
 static void
 start_process (void *file_name_)
 {
-  char *file_name = file_name_;
+  char *cmdline;
+  char *file_name = strtok_r (file_name_, ignore_delimiters,
+                              &cmdline);
   struct intr_frame if_;
   bool success;
 
@@ -59,7 +65,7 @@ start_process (void *file_name_)
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load (file_name, &if_.eip, &if_.esp);
+  success = load (file_name, cmdline, &if_.eip, &if_.esp);
 
   /* If load failed, quit. */
   palloc_free_page (file_name);
@@ -88,6 +94,8 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
+  while (true)
+    barrier ();
   return -1;
 }
 
@@ -196,6 +204,9 @@ struct Elf32_Phdr
 #define PF_R 4          /* Readable. */
 
 static bool setup_stack (void **esp);
+static void push_stack_args (const char *file_name, char *cmdline, void **esp);
+static void push (void **esp, void *adr, size_t num_bytes);
+static int parse_cmd_ln (char *cmdline, void **esp);
 static bool validate_segment (const struct Elf32_Phdr *, struct file *);
 static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
                           uint32_t read_bytes, uint32_t zero_bytes,
@@ -206,7 +217,7 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
    and its initial stack pointer into *ESP.
    Returns true if successful, false otherwise. */
 bool
-load (const char *file_name, void (**eip) (void), void **esp) 
+load (const char *file_name, char *cmdline, void (**eip) (void), void **esp) 
 {
   struct thread *t = thread_current ();
   struct Elf32_Ehdr ehdr;
@@ -304,6 +315,9 @@ load (const char *file_name, void (**eip) (void), void **esp)
   /* Set up stack. */
   if (!setup_stack (esp))
     goto done;
+  
+  /* Push stack values */
+  push_stack_args (file_name, cmdline, esp);
 
   /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry;
@@ -442,6 +456,56 @@ setup_stack (void **esp)
         palloc_free_page (kpage);
     }
   return success;
+}
+
+/* Push all of the relevant values from the cmd 
+   line to the stack. */
+void
+push_stack_args (const char *file_name, char *cmdline, void **esp)
+{
+  push (esp, file_name, strnlen (file_name, PGSIZE) + 1);
+  int argc = parse_cmd_ln (cmdline, esp) + 1;
+  char *argv_data_ptr = esp;
+  push (esp, 0, ((uint32_t) esp) % 4);
+  push (esp, 0, sizeof (char**));
+  int curr_str;
+  for (curr_str = 0; curr_str < argc; curr_str++)
+  {
+    push (esp, argv_data_ptr, sizeof (char **));
+    argv_data_ptr += strnlen (argv_data_ptr, PGSIZE) + 1;  
+  }
+  char **argv_ptr_strt = (char **) esp;
+  push (esp, argv_ptr_strt, sizeof (char ***));
+  push (esp, &argc, sizeof (int *));
+  push (esp, 0, sizeof (void *));
+}
+
+/* Push a memory onto the stack. */
+void
+push (void **esp, void *adr, size_t num_bytes)
+{
+  *esp = (*(char **) esp) - num_bytes;
+  if (adr != NULL)
+    memcpy (*esp, adr, num_bytes);
+  else
+    memset (*esp, 0, num_bytes);
+}
+
+/* Split the command line into words separated only by '\0'
+   null characters. */
+int
+parse_cmd_ln (char *cmdline, void **esp)
+{
+  int count = 0;
+  char *token, *save_ptr;
+  for (token = strtok_r (cmdline, ignore_delimiters, &save_ptr);
+       token != NULL;
+       token = strtok_r (NULL, ignore_delimiters, &save_ptr))
+    {
+      push (esp, token, strnlen (token, PGSIZE) + 1);
+      count++;
+    }
+  return count;
 }
 
 /* Adds a mapping from user virtual address UPAGE to kernel
