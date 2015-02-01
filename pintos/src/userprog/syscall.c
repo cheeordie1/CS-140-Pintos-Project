@@ -3,7 +3,8 @@
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
-//#include "threads/init.c"
+#include "filesys/filesys.h"
+#include "devices/shutdown.h"
 
 static void syscall_handler (struct intr_frame *);
 
@@ -68,8 +69,7 @@ syscall_wait (pid_t pid UNUSED)
 bool
 syscall_create (const char *file UNUSED, uint32_t initial_size UNUSED)
 {
-  /* NOT YET IMPLEMENTED */
-  return false;
+  return filesys_create (file, (off_t) initial_size);
 }
 
 /* Deletes the file called file. Returns true if successful, false otherwise. A
@@ -78,8 +78,7 @@ syscall_create (const char *file UNUSED, uint32_t initial_size UNUSED)
 bool
 syscall_remove (const char* file UNUSED)
 {
-   /* NOT YET IMPLEMENTED */
-  return false;
+  return filesys_remove (file);
 }
 
 /* Opens the file called file. Returns a nonnegative integer handle called a
