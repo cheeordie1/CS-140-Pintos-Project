@@ -32,4 +32,6 @@ uint32_t syscall_tell (int fd UNUSED);
 
 void syscall_close (int fd UNUSED);
 
+void* syscall_arg (void *esp, int index);
+
 #endif /* userprog/syscall.h */
