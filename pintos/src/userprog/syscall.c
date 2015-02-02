@@ -6,6 +6,9 @@
 #include "filesys/filesys.h"
 #include "devices/shutdown.h"
 
+#define STDIN 1
+#define STDOUT 0
+
 static void syscall_handler (struct intr_frame *);
 
 void
@@ -30,8 +33,7 @@ syscall_halt (void)
 void
 syscall_exit (int status)
 {
-  
-  /* NOT YET IMPLEMENTED */
+  printf ("Exiting!\n");
 }
 
 /* Runs the executable whose name is given in cmd_line, passing any given
@@ -114,9 +116,10 @@ syscall_read (int fd UNUSED, void *buf UNUSED, uint32_t size UNUSED)
    bytes actually written, which may be less than size if some bytes could not
    be written. */
 int
-syscall_write (int fd UNUSED, const void* buf UNUSED, uint32_t size UNUSED)
+syscall_write (int fd, const void* buf, uint32_t size)
 {
-   /* NOT YET IMPLEMENTED */
+   if (fd == STDIN)
+     putbuf (buf, size);
   return 0;
 }
 
@@ -199,11 +202,9 @@ syscall_handler (struct intr_frame *f UNUSED)
         break;
       /* Write to a file. */
       case SYS_WRITE:
-         printf ("<1>\n");
          f->eax = syscall_write (*(int *) syscall_arg (f->esp, 1),
                                  *(void **) syscall_arg (f->esp, 2),
                                  *(uint32_t *) syscall_arg (f->esp, 3));
-         printf ("<2>\n");
          break;
       /* Change position in a file. */
       case SYS_SEEK:

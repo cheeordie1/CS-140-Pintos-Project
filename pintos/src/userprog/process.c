@@ -465,17 +465,17 @@ push_stack_args (const char *file_name, char *cmdline, void **esp)
 {
   push (esp, (void *) file_name, strnlen (file_name, PGSIZE) + 1);
   int argc = parse_cmd_ln (cmdline, esp) + 1;
-  char *argv_data_ptr = (char *) esp;
-  push (esp, 0, ((uint32_t) esp) % 4);
-  push (esp, 0, sizeof (char**));
+  void *argv_data_ptr = *(void **) esp;
+  push (esp, 0, ((uint32_t) *esp) % 4);
+  push (esp, 0, sizeof (char*));
   int curr_str;
   for (curr_str = 0; curr_str < argc; curr_str++)
   {
-    push (esp, argv_data_ptr, sizeof (char **));
+    push (esp, &argv_data_ptr, sizeof (char *));
     argv_data_ptr += strnlen (argv_data_ptr, PGSIZE) + 1;  
   }
-  char **argv_ptr_strt = (char **) esp;
-  push (esp, argv_ptr_strt, sizeof (char ***));
+  void *argv_ptr_strt = *(void **) esp;
+  push (esp, &argv_ptr_strt, sizeof (char **));
   push (esp, &argc, sizeof (int *));
   push (esp, 0, sizeof (void *));
 }
