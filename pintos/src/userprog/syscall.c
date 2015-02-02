@@ -113,9 +113,13 @@ syscall_read (int fd UNUSED, void *buf UNUSED, uint32_t size UNUSED)
    bytes actually written, which may be less than size if some bytes could not
    be written. */
 int
-syscall_write (int fd UNUSED, const void* buf UNUSED, uint32_t size UNUSED)
+syscall_write (int fd, const void* buf, uint32_t size)
 {
    /* NOT YET IMPLEMENTED */
+  if (fd == 1) 
+    {
+      putbuf (buf, size);
+    }
   return 0;
 }
 
@@ -167,7 +171,7 @@ syscall_handler (struct intr_frame *f UNUSED)
         int status = *(int*) syscall_arg (f->esp, 1);
         syscall_exit (status);
       }
-    
+      break;
     /* Start another process. */
     case SYS_EXEC:                   
       {
@@ -175,7 +179,7 @@ syscall_handler (struct intr_frame *f UNUSED)
         pid_t pid = syscall_exec (cmd_line);
         f->eax = (uint32_t) pid;
       }
-    
+      break;
     /* Wait for a child process to die. */
     case SYS_WAIT:                   
       {
@@ -183,7 +187,7 @@ syscall_handler (struct intr_frame *f UNUSED)
         int status = syscall_wait (pid);
         f->eax = (uint32_t) status;
       }
-    
+      break;
     /* Create a file. */
     case SYS_CREATE:
       {
@@ -192,7 +196,7 @@ syscall_handler (struct intr_frame *f UNUSED)
         bool success = syscall_create (file, initial_size);
         f->eax = (uint32_t) success;
       }                 
-
+      break;
     /* Delete a file. */
     case SYS_REMOVE:
       {
@@ -200,7 +204,7 @@ syscall_handler (struct intr_frame *f UNUSED)
         bool success = syscall_remove (file);
         f->eax = (uint32_t) success;
       }
-    
+      break;
     /* Open a file. */
     case SYS_OPEN:
       {
@@ -208,7 +212,7 @@ syscall_handler (struct intr_frame *f UNUSED)
         int fd = syscall_open (file);
         f->eax = (uint32_t) fd;
       }
-    
+      break;
     /* Obtain a file's size. */
     case SYS_FILESIZE:
       {
@@ -216,7 +220,7 @@ syscall_handler (struct intr_frame *f UNUSED)
         int size = syscall_filesize (fd);
         f->eax = (uint32_t) size;
       }
-
+      break;
     /* Read from a file. */
     case SYS_READ:
       {
@@ -226,7 +230,7 @@ syscall_handler (struct intr_frame *f UNUSED)
         int bytes_read = syscall_read (fd, buf, size);
         f->eax = (uint32_t) bytes_read;
       }
-
+      break;
     /* Write to a file. */
     case SYS_WRITE:
        {
@@ -236,7 +240,7 @@ syscall_handler (struct intr_frame *f UNUSED)
          int bytes_written = syscall_write (fd, buf, size);
          f->eax = (uint32_t) bytes_written;
        }  
-
+      break;
     /* Change position in a file. */
     case SYS_SEEK:
       {
@@ -244,7 +248,7 @@ syscall_handler (struct intr_frame *f UNUSED)
          uint32_t position = *(uint32_t*) syscall_arg (f->esp, 2);
          syscall_seek (fd, position);
       } 
-    
+      break;
     /* Report current position in a file. */
     case SYS_TELL:                   
       {
@@ -252,14 +256,14 @@ syscall_handler (struct intr_frame *f UNUSED)
          uint32_t position = syscall_tell (fd);
          f->eax = position;
       } 
-
+      break;
     /* Close a file. */
     case SYS_CLOSE:
       {
          int fd = *(int*) syscall_arg (f->esp, 1);
          syscall_close (fd);
       }
-
+      break;
     default:
       printf ("system call!\n");
       thread_exit ();
