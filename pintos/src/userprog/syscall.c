@@ -28,8 +28,9 @@ syscall_halt (void)
    returned. Conventionally, a status of 0 indicates success and nonzero values
    indicate errors. */
 void
-syscall_exit (int status UNUSED)
+syscall_exit (int status)
 {
+  
   /* NOT YET IMPLEMENTED */
 }
 
@@ -152,13 +153,14 @@ syscall_close (int fd UNUSED)
 void*
 syscall_arg (void *esp, int index)
 {
-  return (char*) esp + (index * sizeof (void*));
+  return (char *) esp + (index * sizeof (void *));
 }
 
 static void
 syscall_handler (struct intr_frame *f UNUSED) 
 {
   int syscall = *(int*) f->esp;
+<<<<<<< HEAD
   switch(syscall){
     
     /* Halt the operating system. */                   
@@ -267,5 +269,72 @@ syscall_handler (struct intr_frame *f UNUSED)
     default:
       printf ("system call!\n");
       thread_exit ();
+=======
+  switch(syscall)
+    {
+      /* Halt the operating system. */                   
+      case SYS_HALT:
+        syscall_halt ();
+        break; 
+      /* Terminate this process. */
+      case SYS_EXIT:            
+        syscall_exit (*(int *) syscall_arg (f->esp, 1));
+        break; 
+      /* Start another process. */
+      case SYS_EXEC:                   
+        f->eax = syscall_exec (*(char **) syscall_arg (f->esp, 1));
+        break;
+       /* Wait for a child process to die. */
+      case SYS_WAIT:                  
+        f->eax = syscall_wait (*(pid_t *) syscall_arg (f->esp, 1));
+        break;
+      /* Create a file. */
+      case SYS_CREATE:
+        f->eax = syscall_create (*(char **) syscall_arg (f->esp, 1),
+                                 *(uint32_t *) syscall_arg (f->esp, 2));
+        break;                 
+      /* Delete a file. */
+      case SYS_REMOVE:
+        f->eax = syscall_remove (*(char **) syscall_arg (f->esp, 1));
+        break; 
+      /* Open a file. */
+      case SYS_OPEN:
+        f->eax = syscall_open (*(char **) syscall_arg (f->esp, 1));
+        break; 
+      /* Obtain a file's size. */
+      case SYS_FILESIZE:
+        f->eax = syscall_filesize (*(int *) syscall_arg (f->esp, 1));
+        break;
+      /* Read from a file. */
+      case SYS_READ:
+        f->eax = syscall_read (*(int *) syscall_arg (f->esp, 1),
+                               *(void **) syscall_arg (f->esp, 2),
+                               *(uint32_t *) syscall_arg (f->esp, 3));
+        break;
+      /* Write to a file. */
+      case SYS_WRITE:
+         printf ("<1>\n");
+         f->eax = syscall_write (*(int *) syscall_arg (f->esp, 1),
+                                 *(void **) syscall_arg (f->esp, 2),
+                                 *(uint32_t *) syscall_arg (f->esp, 3));
+         printf ("<2>\n");
+         break;
+      /* Change position in a file. */
+      case SYS_SEEK:
+         syscall_seek (*(int *) syscall_arg (f->esp, 1),
+                       *(uint32_t *) syscall_arg (f->esp, 2));
+         break; 
+      /* Report current position in a file. */
+      case SYS_TELL:                   
+         f->eax = syscall_tell (*(int *) syscall_arg (f->esp, 1));
+         break;
+      /* Close a file. */
+      case SYS_CLOSE:
+         syscall_close (*(int *) syscall_arg (f->esp, 1));
+         break;
+      default:
+        printf ("system call!\n");
+        thread_exit ();
+>>>>>>> aa156fbe85f445274326a31ebdac4985d8cb378c
   }
 }
