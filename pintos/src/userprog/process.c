@@ -329,7 +329,7 @@ load (const char *file_name, char *cmdline, void (**eip) (void), void **esp)
   file_close (file);
   return success;
 }
-
+
 /* load() helpers. */
 
 static bool install_page (void *upage, void *kpage, bool writable);
@@ -463,9 +463,9 @@ setup_stack (void **esp)
 void
 push_stack_args (const char *file_name, char *cmdline, void **esp)
 {
-  push (esp, file_name, strnlen (file_name, PGSIZE) + 1);
+  push (esp, (void *) file_name, strnlen (file_name, PGSIZE) + 1);
   int argc = parse_cmd_ln (cmdline, esp) + 1;
-  char *argv_data_ptr = esp;
+  char *argv_data_ptr = (char *) esp;
   push (esp, 0, ((uint32_t) esp) % 4);
   push (esp, 0, sizeof (char**));
   int curr_str;
