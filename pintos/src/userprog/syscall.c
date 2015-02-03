@@ -160,116 +160,6 @@ static void
 syscall_handler (struct intr_frame *f UNUSED) 
 {
   int syscall = *(int*) f->esp;
-<<<<<<< HEAD
-  switch(syscall){
-    
-    /* Halt the operating system. */                   
-    case SYS_HALT:
-      syscall_halt ();
-    
-    /* Terminate this process. */
-    case SYS_EXIT:                   
-      {
-        int status = *(int*) syscall_arg (f->esp, 1);
-        syscall_exit (status);
-      }
-      break;
-    /* Start another process. */
-    case SYS_EXEC:                   
-      {
-        char* cmd_line = (char*) syscall_arg (f->esp, 1);
-        pid_t pid = syscall_exec (cmd_line);
-        f->eax = (uint32_t) pid;
-      }
-      break;
-    /* Wait for a child process to die. */
-    case SYS_WAIT:                   
-      {
-        pid_t pid = *(pid_t*) syscall_arg (f->esp, 1);
-        int status = syscall_wait (pid);
-        f->eax = (uint32_t) status;
-      }
-      break;
-    /* Create a file. */
-    case SYS_CREATE:
-      {
-        char* file = (char*) syscall_arg (f->esp, 1);
-        uint32_t initial_size = *(uint32_t*) syscall_arg (f->esp, 2);
-        bool success = syscall_create (file, initial_size);
-        f->eax = (uint32_t) success;
-      }                 
-      break;
-    /* Delete a file. */
-    case SYS_REMOVE:
-      {
-        char* file = (char*) syscall_arg (f->esp, 1);
-        bool success = syscall_remove (file);
-        f->eax = (uint32_t) success;
-      }
-      break;
-    /* Open a file. */
-    case SYS_OPEN:
-      {
-        char* file = (char*) syscall_arg (f->esp, 1);
-        int fd = syscall_open (file);
-        f->eax = (uint32_t) fd;
-      }
-      break;
-    /* Obtain a file's size. */
-    case SYS_FILESIZE:
-      {
-        int fd = *(int*) syscall_arg (f->esp, 1);
-        int size = syscall_filesize (fd);
-        f->eax = (uint32_t) size;
-      }
-      break;
-    /* Read from a file. */
-    case SYS_READ:
-      {
-        int fd = *(int*) syscall_arg (f->esp, 1);
-        void *buf = syscall_arg (f->esp, 2);
-        uint32_t size = *(uint32_t*) syscall_arg (f->esp, 3);
-        int bytes_read = syscall_read (fd, buf, size);
-        f->eax = (uint32_t) bytes_read;
-      }
-      break;
-    /* Write to a file. */
-    case SYS_WRITE:
-       {
-         int fd = *(int*) syscall_arg (f->esp, 1);
-         void *buf = syscall_arg (f->esp, 2);
-         uint32_t size = *(uint32_t*) syscall_arg (f->esp, 3);
-         int bytes_written = syscall_write (fd, buf, size);
-         f->eax = (uint32_t) bytes_written;
-       }  
-      break;
-    /* Change position in a file. */
-    case SYS_SEEK:
-      {
-         int fd = *(int*) syscall_arg (f->esp, 1);
-         uint32_t position = *(uint32_t*) syscall_arg (f->esp, 2);
-         syscall_seek (fd, position);
-      } 
-      break;
-    /* Report current position in a file. */
-    case SYS_TELL:                   
-      {
-         int fd = *(int*) syscall_arg (f->esp, 1);
-         uint32_t position = syscall_tell (fd);
-         f->eax = position;
-      } 
-      break;
-    /* Close a file. */
-    case SYS_CLOSE:
-      {
-         int fd = *(int*) syscall_arg (f->esp, 1);
-         syscall_close (fd);
-      }
-      break;
-    default:
-      printf ("system call!\n");
-      thread_exit ();
-=======
   switch(syscall)
     {
       /* Halt the operating system. */                   
@@ -335,6 +225,5 @@ syscall_handler (struct intr_frame *f UNUSED)
       default:
         printf ("system call!\n");
         thread_exit ();
->>>>>>> aa156fbe85f445274326a31ebdac4985d8cb378c
   }
 }
