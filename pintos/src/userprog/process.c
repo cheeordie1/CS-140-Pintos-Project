@@ -9,19 +9,28 @@
 #include "userprog/pagedir.h"
 #include "userprog/tss.h"
 #include "filesys/directory.h"
-#include "filesys/file.h"
 #include "filesys/filesys.h"
 #include "threads/flags.h"
 #include "threads/init.h"
 #include "threads/interrupt.h"
+#include "threads/malloc.h"
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 /* Delete later */
 #include "threads/synch.h"
 
+#define FD_SIZE 16
+#define MAX_FDS 128
+
 static thread_func start_process NO_RETURN;
 static bool load (const char *file_name, char *cmdline, void (**eip) (void), void **esp);
+
+struct fd_list 
+{
+  int size;
+  void *fd_arr;
+}
 
 const char *ignore_delimiters = " \t\r";
 
@@ -139,7 +148,48 @@ process_activate (void)
      interrupts. */
   tss_update ();
 }
-
+
+static struct fd_list *get_fd_arr ();
+
+/* Helper function to find the file descriptor entry of a 
+   process file descriptor table. */
+struct fd_list *get_fd_arr ()
+{
+  return (struct fd_list *) (PHYS_BASE - sizeof (struct fd_list *));
+}
+
+/* Insert a file pointer into the process fd table. */
+int
+process_open (struct file *open_file)
+{
+  bool success = false;
+  struct fd_list *fd_table = get_fd_arr ();
+  int curr_fd;
+  for (curr_fd = 0; curr_fd < fd_table->size; curr_fd++)
+    {
+      if (fd_table->fd_arr[curr_fd] == NULL)
+        {
+          fd_table->fd_arr[curr_fd] = open_file; 
+          success = true;
+        }
+    }
+  if (!success)
+    {
+      if (fd_table->size >= MAX_FDS)
+        return -1;
+      else
+        {
+          fd_table->size *= 2;
+          fd_table = (struct fd_list *) realloc (fd_table,
+                      sizeof (struct file *) * fd_table->size);
+          memset (&fd_table->fd_arr[fd_table->size / 2], 0,
+                  sizeof (struct file *) * fd_table->size / 2);
+          return process_open (open_file);
+        }
+    }
+  return curr_fd + 2;
+}
+
 /* We load ELF binaries.  The following definitions are taken
    from the ELF specification, [ELF1], more-or-less verbatim.  */
 
@@ -463,19 +513,23 @@ setup_stack (void **esp)
 void
 push_stack_args (const char *file_name, char *cmdline, void **esp)
 {
+  struct fd_list fd_table;
+  fd_table.size = FD_SIZE;
+  fd_table.fd_arr = calloc (fd_table.size, sizeof (struct file *));
+  push (esp, &fd_table, sizeof (struct fd_list));
   push (esp, (void *) file_name, strnlen (file_name, PGSIZE) + 1);
   int argc = parse_cmd_ln (cmdline, esp) + 1;
-  char *argv_data_ptr = (char *) esp;
-  push (esp, 0, ((uint32_t) esp) % 4);
-  push (esp, 0, sizeof (char**));
+  void *argv_data_ptr = *(void **) esp;
+  push (esp, 0, ((uint32_t) *esp) % 4);
+  push (esp, 0, sizeof (char*));
   int curr_str;
   for (curr_str = 0; curr_str < argc; curr_str++)
   {
-    push (esp, argv_data_ptr, sizeof (char **));
+    push (esp, &argv_data_ptr, sizeof (char *));
     argv_data_ptr += strnlen (argv_data_ptr, PGSIZE) + 1;  
   }
-  char **argv_ptr_strt = (char **) esp;
-  push (esp, argv_ptr_strt, sizeof (char ***));
+  void *argv_ptr_strt = *(void **) esp;
+  push (esp, &argv_ptr_strt, sizeof (char **));
   push (esp, &argc, sizeof (int *));
   push (esp, 0, sizeof (void *));
 }

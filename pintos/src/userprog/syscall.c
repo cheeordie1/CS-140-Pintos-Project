@@ -3,8 +3,15 @@
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "filesys/file.h"
 #include "filesys/filesys.h"
 #include "devices/shutdown.h"
+
+
+#include "lib/kernel/hash.h"
+
+#define STDIN 1
+#define STDOUT 0
 
 static void syscall_handler (struct intr_frame *);
 
@@ -12,6 +19,7 @@ void
 syscall_init (void) 
 {
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
+//  hash_init (&fd_hash, hash_fd, hash_fd_cmp, NULL);0
 }
 
 /* Terminates Pintos by calling power_off() (declared in "threads/init.h").
@@ -30,8 +38,7 @@ syscall_halt (void)
 void
 syscall_exit (int status)
 {
-  
-  /* NOT YET IMPLEMENTED */
+  printf ("Exiting!\n");
 }
 
 /* Runs the executable whose name is given in cmd_line, passing any given
@@ -68,7 +75,7 @@ syscall_wait (pid_t pid UNUSED)
    opening the new file is a separate operation which would require a open
    system call. */
 bool
-syscall_create (const char *file UNUSED, uint32_t initial_size UNUSED)
+syscall_create (const char *file, uint32_t initial_size)
 {
   return filesys_create (file, (off_t) initial_size);
 }
@@ -77,7 +84,7 @@ syscall_create (const char *file UNUSED, uint32_t initial_size UNUSED)
    file may be removed regardless of whether it is open or closed, and removing
    an open file does not close it. See Removing an Open File, for details. */
 bool
-syscall_remove (const char* file UNUSED)
+syscall_remove (const char *file UNUSED)
 {
   return filesys_remove (file);
 }
@@ -85,10 +92,12 @@ syscall_remove (const char* file UNUSED)
 /* Opens the file called file. Returns a nonnegative integer handle called a
    "file descriptor" (fd), or -1 if the file could not be opened. */
 int
-syscall_open (const char* file UNUSED)
+syscall_open (const char *file)
 {
-   /* NOT YET IMPLEMENTED */
-  return -1;
+  // check if pointers are fine to use
+  struct file *map_file = file_open (file);
+  int fd = process_open (map_file);
+  return fd;
 }
 
 /* Returns the size, in bytes, of the file open as fd. */
@@ -116,11 +125,8 @@ syscall_read (int fd UNUSED, void *buf UNUSED, uint32_t size UNUSED)
 int
 syscall_write (int fd, const void* buf, uint32_t size)
 {
-   /* NOT YET IMPLEMENTED */
-  if (fd == 1) 
-    {
-      putbuf (buf, size);
-    }
+   if (fd == STDIN)
+     putbuf (buf, size);
   return 0;
 }
 
@@ -203,11 +209,9 @@ syscall_handler (struct intr_frame *f UNUSED)
         break;
       /* Write to a file. */
       case SYS_WRITE:
-         printf ("<1>\n");
          f->eax = syscall_write (*(int *) syscall_arg (f->esp, 1),
                                  *(void **) syscall_arg (f->esp, 2),
                                  *(uint32_t *) syscall_arg (f->esp, 3));
-         printf ("<2>\n");
          break;
       /* Change position in a file. */
       case SYS_SEEK:
