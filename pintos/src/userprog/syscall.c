@@ -3,8 +3,12 @@
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "filesys/file.h"
 #include "filesys/filesys.h"
 #include "devices/shutdown.h"
+
+
+#include "lib/kernel/hash.h"
 
 #define STDIN 1
 #define STDOUT 0
@@ -31,6 +35,7 @@ static void
 syscall_init (void) 
 {
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
+//  hash_init (&fd_hash, hash_fd, hash_fd_cmp, NULL);0
 }
 
 /* Terminates Pintos by calling power_off() (declared in "threads/init.h").
@@ -86,7 +91,7 @@ syscall_wait (pid_t pid UNUSED)
    opening the new file is a separate operation which would require a open
    system call. */
 static bool
-syscall_create (const char *file UNUSED, uint32_t initial_size UNUSED)
+syscall_create (const char *file, uint32_t initial_size)
 {
   return filesys_create (file, (off_t) initial_size);
 }
@@ -95,7 +100,7 @@ syscall_create (const char *file UNUSED, uint32_t initial_size UNUSED)
    file may be removed regardless of whether it is open or closed, and removing
    an open file does not close it. See Removing an Open File, for details. */
 static bool
-syscall_remove (const char* file UNUSED)
+syscall_remove (const char *file UNUSED)
 {
   return filesys_remove (file);
 }
@@ -103,10 +108,12 @@ syscall_remove (const char* file UNUSED)
 /* Opens the file called file. Returns a nonnegative integer handle called a
    "file descriptor" (fd), or -1 if the file could not be opened. */
 static int
-syscall_open (const char* file UNUSED)
+syscall_open (const char *file)
 {
-   /* NOT YET IMPLEMENTED */
-  return -1;
+  // check if pointers are fine to use
+  struct file *map_file = file_open (file);
+  int fd = process_open (map_file);
+  return fd;
 }
 
 /* Returns the size, in bytes, of the file open as fd. */
