@@ -83,6 +83,38 @@ static void thread_calculate_priority (struct thread *t);
 static void thread_calculate_recent_cpu (struct thread *t, void *aux UNUSED);
 static void thread_update_priorities (struct thread *t, void *aux UNUSED);
 
+
+/* Function: hash
+ * --------------
+ * This function adapted from Eric Roberts' _The Art and Science of C_
+ * It takes a string and uses it to derive a "hash code," which
+ * is an integer in the range [0..nbuckets-1]. The hash code is computed
+ * using a method called "linear congruence." A similar function using this
+ * method is described on page 144 of Kernighan and Ritchie. The choice of
+ * the value for the multiplier can have a significant effort on the
+ * performance of the algorithm, but not on its correctness.
+ * The computed hash value is stable, e.g. passing the same string and
+ * nbuckets to function again will always return the same code.
+ * The hash is case-sensitive, "ZELENSKI" and "Zelenski" are
+ * not guaranteed to hash to same code.
+ */
+
+bool 
+fdt_cmp (const struct hash_elem *a,
+             const struct hash_elem *b,
+             void *aux)
+{
+  return hash_entry (a, struct file_descriptor, elem)->fd < 
+         hash_entry (b, struct file_descriptor, elem)->fd;
+}
+
+unsigned 
+fdt_hash (const struct hash_elem *e, void *aux)
+{
+  unsigned nbuckets = *(unsigned*) aux;
+  return hash_entry (e, struct file_descriptor, elem)->fd % nbuckets;
+}
+
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
@@ -665,6 +697,8 @@ init_thread (struct thread *t, const char *name, int priority)
   ASSERT (t != NULL);
   ASSERT (PRI_MIN <= priority && priority <= PRI_MAX);
   ASSERT (name != NULL);
+ 
+  hash_init (&t->fd_hash, fdt_hash, fdt_cmp, NULL);
 
   old_level = intr_disable ();
   memset (t, 0, sizeof *t);
