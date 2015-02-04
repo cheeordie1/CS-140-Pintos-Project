@@ -3,5 +3,6 @@ tests/threads/alarm-negative.o: ../../tests/threads/alarm-negative.c \
  ../../lib/stdbool.h ../../lib/stddef.h ../../lib/stdint.h \
  ../../lib/kernel/stdio.h ../../tests/threads/tests.h \
  ../../threads/malloc.h ../../threads/synch.h ../../lib/kernel/list.h \
- ../../threads/thread.h ../../threads/fixed-point.h ../../devices/timer.h \
+ ../../threads/thread.h ../../threads/fixed-point.h \
+ ../../lib/kernel/hash.h ../../lib/kernel/list.h ../../devices/timer.h \
  ../../lib/round.h

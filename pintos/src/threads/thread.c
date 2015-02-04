@@ -83,6 +83,42 @@ static void thread_calculate_priority (struct thread *t);
 static void thread_calculate_recent_cpu (struct thread *t, void *aux UNUSED);
 static void thread_update_priorities (struct thread *t, void *aux UNUSED);
 
+bool 
+fdt_cmp (const struct hash_elem *a,
+             const struct hash_elem *b,
+             void *aux)
+{
+  return hash_entry (a, struct file_descriptor, elem)->fd < 
+         hash_entry (b, struct file_descriptor, elem)->fd;
+}
+
+unsigned 
+fdt_hash (const struct hash_elem *e, void *aux)
+{
+  unsigned nbuckets = *(unsigned*) aux;
+  return hash_entry (e, struct file_descriptor, elem)->fd % nbuckets;
+}
+
+struct hash_elem *
+fdt_search (struct hash *fdt_hash, int fd)
+{
+  struct file_descriptor singleton;
+  singleton.fd = fd;
+  hash_insert (fdt_hash, &singleton);
+  
+}
+
+int
+fdt_next (struct hash *fdt_hash)
+{
+  fd
+  int curr_fd;
+  for (curr_fd = 2; curr_fd < INT32_MAX; curr_fd++)
+    {
+      ;
+    }
+}
+
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
@@ -665,6 +701,8 @@ init_thread (struct thread *t, const char *name, int priority)
   ASSERT (t != NULL);
   ASSERT (PRI_MIN <= priority && priority <= PRI_MAX);
   ASSERT (name != NULL);
+ 
+  hash_init (&t->fd_hash, fdt_hash, fdt_cmp, NULL);
 
   old_level = intr_disable ();
   memset (t, 0, sizeof *t);
