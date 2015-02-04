@@ -30,7 +30,7 @@ struct fd_list
 {
   int size;
   void *fd_arr;
-}
+};
 
 const char *ignore_delimiters = " \t\r";
 
@@ -167,11 +167,13 @@ process_open (struct file *open_file)
   int curr_fd;
   for (curr_fd = 0; curr_fd < fd_table->size; curr_fd++)
     {
+/*
       if (fd_table->fd_arr[curr_fd] == NULL)
         {
           fd_table->fd_arr[curr_fd] = open_file; 
           success = true;
         }
+*/
     }
   if (!success)
     {

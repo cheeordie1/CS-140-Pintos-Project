@@ -14,6 +14,20 @@
 #define STDOUT 0
 
 static void syscall_handler (struct intr_frame *);
+static void syscall_halt (void);
+static void syscall_exit (int status);
+static pid_t syscall_exec (const char *cmd_line);
+static int syscall_wait (pid_t pid);
+static bool syscall_create (const char *file, uint32_t initial_size);
+static bool syscall_remove (const char* file);
+static int syscall_open (const char* file);
+static int syscall_filesize (int fd);
+static int syscall_read (int fd, void *buf, uint32_t size);
+static int syscall_write (int fd, const void* buf, uint32_t size);
+static void syscall_seek (int fd, uint32_t position);
+static uint32_t syscall_tell (int fd);
+static void syscall_close (int fd);
+static void* syscall_arg (void *esp, int index);
 
 void
 syscall_init (void) 
@@ -48,7 +62,7 @@ syscall_exit (int status)
    until it knows whether the child process successfully loaded its executable.
    You must use appropriate synchronization to ensure this. */
 pid_t
-syscall_exec (const char *cmd_line UNUSED)
+syscall_exec (const char *cmd_line)
 {
   /* NOT YET IMPLEMENTED */
   return -1;
@@ -64,7 +78,7 @@ syscall_exec (const char *cmd_line UNUSED)
    must still allow the parent to retrieve its child's exit status, or learn
    that the child was terminated by the kernel. */
 int
-syscall_wait (pid_t pid UNUSED)
+syscall_wait (pid_t pid)
 {
   /* NOT YET IMPLEMENTED */
   return -1;
@@ -84,7 +98,7 @@ syscall_create (const char *file, uint32_t initial_size)
    file may be removed regardless of whether it is open or closed, and removing
    an open file does not close it. See Removing an Open File, for details. */
 bool
-syscall_remove (const char *file UNUSED)
+syscall_remove (const char *file)
 {
   return filesys_remove (file);
 }
@@ -94,15 +108,22 @@ syscall_remove (const char *file UNUSED)
 int
 syscall_open (const char *file)
 {
-  // check if pointers are fine to use
-  struct file *map_file = file_open (file);
-  int fd = process_open (map_file);
-  return fd;
+  //TODO Check the file * for proper address
+  struct thread *t = thread_current ();
+  ASSERT (is_thread (t));
+  struct file_descriptor *fdt_entry;
+  if (!(fdt_entry = malloc (sizeof (struct file_descriptor))))
+      return -1;
+  fdt_entry->fd = hash_size (&t->fd_hash);
+
+  hash_insert (&t->fd_hash, &fdt_entry->elem);
+  struct file *open_file = filesys_open (file);
+  return fdt_entry->fd;
 }
 
 /* Returns the size, in bytes, of the file open as fd. */
 int
-syscall_filesize (int fd UNUSED)
+syscall_filesize (int fd)
 {
    /* NOT YET IMPLEMENTED */
   return 0;
@@ -113,7 +134,7 @@ syscall_filesize (int fd UNUSED)
    (due to a condition other than end of file). Fd 0 reads from the keyboard
    using input_getc(). */
 int
-syscall_read (int fd UNUSED, void *buf UNUSED, uint32_t size UNUSED)
+syscall_read (int fd, void *buf, uint32_t size)
 {
    /* NOT YET IMPLEMENTED */
   return -1;
@@ -133,7 +154,7 @@ syscall_write (int fd, const void* buf, uint32_t size)
 /* Changes the next byte to be read or written in open file fd to position,
    expressed in bytes from the beginning of the file. */
 void
-syscall_seek (int fd UNUSED, uint32_t position UNUSED)
+syscall_seek (int fd, uint32_t position)
 {
    /* NOT YET IMPLEMENTED */
 }
@@ -141,7 +162,7 @@ syscall_seek (int fd UNUSED, uint32_t position UNUSED)
 /* Returns the position of the next byte to be read or written in open file fd,
    expressed in bytes from the beginning of the file. */
 uint32_t
-syscall_tell (int fd UNUSED) 
+syscall_tell (int fd) 
 {
    /* NOT YET IMPLEMENTED */
   return 0;
@@ -151,9 +172,9 @@ syscall_tell (int fd UNUSED)
    closes all its open file descriptors, as if by calling this function for
    each one. */
 void
-syscall_close (int fd UNUSED)
+syscall_close (int fd)
 {
-   /* NOT YET IMPLEMENTED */
+    
 }
 
 void*
@@ -163,7 +184,7 @@ syscall_arg (void *esp, int index)
 }
 
 static void
-syscall_handler (struct intr_frame *f UNUSED) 
+syscall_handler (struct intr_frame *f) 
 {
   int syscall = *(int*) f->esp;
   switch(syscall)
