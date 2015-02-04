@@ -149,49 +149,6 @@ process_activate (void)
   tss_update ();
 }
 
-static struct fd_list *get_fd_arr ();
-
-/* Helper function to find the file descriptor entry of a 
-   process file descriptor table. */
-struct fd_list *get_fd_arr ()
-{
-  return (struct fd_list *) (PHYS_BASE - sizeof (struct fd_list *));
-}
-
-/* Insert a file pointer into the process fd table. */
-int
-process_open (struct file *open_file)
-{
-  bool success = false;
-  struct fd_list *fd_table = get_fd_arr ();
-  int curr_fd;
-  for (curr_fd = 0; curr_fd < fd_table->size; curr_fd++)
-    {
-/*
-      if (fd_table->fd_arr[curr_fd] == NULL)
-        {
-          fd_table->fd_arr[curr_fd] = open_file; 
-          success = true;
-        }
-*/
-    }
-  if (!success)
-    {
-      if (fd_table->size >= MAX_FDS)
-        return -1;
-      else
-        {
-          fd_table->size *= 2;
-          fd_table = (struct fd_list *) realloc (fd_table,
-                      sizeof (struct file *) * fd_table->size);
-          memset (&fd_table->fd_arr[fd_table->size / 2], 0,
-                  sizeof (struct file *) * fd_table->size / 2);
-          return process_open (open_file);
-        }
-    }
-  return curr_fd + 2;
-}
-
 /* We load ELF binaries.  The following definitions are taken
    from the ELF specification, [ELF1], more-or-less verbatim.  */
 
@@ -382,8 +339,6 @@ load (const char *file_name, char *cmdline, void (**eip) (void), void **esp)
   return success;
 }
 
-/* load() helpers. */
-
 static bool install_page (void *upage, void *kpage, bool writable);
 
 /* Checks whether PHDR describes a valid, loadable segment in
@@ -515,10 +470,6 @@ setup_stack (void **esp)
 void
 push_stack_args (const char *file_name, char *cmdline, void **esp)
 {
-  struct fd_list fd_table;
-  fd_table.size = FD_SIZE;
-  fd_table.fd_arr = calloc (fd_table.size, sizeof (struct file *));
-  push (esp, &fd_table, sizeof (struct fd_list));
   push (esp, (void *) file_name, strnlen (file_name, PGSIZE) + 1);
   int argc = parse_cmd_ln (cmdline, esp) + 1;
   void *argv_data_ptr = *(void **) esp;

@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
+#include "threads/malloc.h"
 #include "threads/thread.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
@@ -33,13 +34,12 @@ void
 syscall_init (void) 
 {
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
-//  hash_init (&fd_hash, hash_fd, hash_fd_cmp, NULL);0
 }
 
 /* Terminates Pintos by calling power_off() (declared in "threads/init.h").
    This should be seldom used, because you lose some information about 
     possible deadlock situations, etc. */
-void 
+static void 
 syscall_halt (void) 
 {
   shutdown_power_off ();
@@ -49,7 +49,7 @@ syscall_halt (void)
    process's parent waits for it (see below), this is the status that will be
    returned. Conventionally, a status of 0 indicates success and nonzero values
    indicate errors. */
-void
+static void
 syscall_exit (int status)
 {
   printf ("Exiting!\n");
@@ -61,7 +61,7 @@ syscall_exit (int status)
    run for any reason. Thus, the parent process cannot return from the exec
    until it knows whether the child process successfully loaded its executable.
    You must use appropriate synchronization to ensure this. */
-pid_t
+static pid_t
 syscall_exec (const char *cmd_line)
 {
   /* NOT YET IMPLEMENTED */
@@ -77,7 +77,7 @@ syscall_exec (const char *cmd_line)
    have already terminated by the time the parent calls wait, but the kernel
    must still allow the parent to retrieve its child's exit status, or learn
    that the child was terminated by the kernel. */
-int
+static int
 syscall_wait (pid_t pid)
 {
   /* NOT YET IMPLEMENTED */
@@ -88,41 +88,42 @@ syscall_wait (pid_t pid)
    true if successful, false otherwise. Creating a new file does not open it:
    opening the new file is a separate operation which would require a open
    system call. */
-bool
+static bool
 syscall_create (const char *file, uint32_t initial_size)
 {
+  // TODO check if file * is proper address and initial_size is proper address
   return filesys_create (file, (off_t) initial_size);
 }
 
 /* Deletes the file called file. Returns true if successful, false otherwise. A
    file may be removed regardless of whether it is open or closed, and removing
    an open file does not close it. See Removing an Open File, for details. */
-bool
+static bool
 syscall_remove (const char *file)
 {
+  // TODO check if file * is proper address
   return filesys_remove (file);
 }
 
 /* Opens the file called file. Returns a nonnegative integer handle called a
    "file descriptor" (fd), or -1 if the file could not be opened. */
-int
+static int
 syscall_open (const char *file)
 {
-  //TODO Check the file * for proper address
+  // TODO Check the file * for proper address
   struct thread *t = thread_current ();
-  ASSERT (is_thread (t));
   struct file_descriptor *fdt_entry;
   if (!(fdt_entry = malloc (sizeof (struct file_descriptor))))
       return -1;
-  fdt_entry->fd = hash_size (&t->fd_hash);
-
+  
+  fdt_entry->fd = fdt_next (&t->fd_hash);
   hash_insert (&t->fd_hash, &fdt_entry->elem);
   struct file *open_file = filesys_open (file);
   return fdt_entry->fd;
 }
 
 /* Returns the size, in bytes, of the file open as fd. */
-int
+static int
 syscall_filesize (int fd)
 {
    /* NOT YET IMPLEMENTED */
@@ -133,7 +134,7 @@ syscall_filesize (int fd)
    bytes actually read (0 at end of file), or -1 if the file could not be read
    (due to a condition other than end of file). Fd 0 reads from the keyboard
    using input_getc(). */
-int
+static int
 syscall_read (int fd, void *buf, uint32_t size)
 {
    /* NOT YET IMPLEMENTED */
@@ -143,7 +144,7 @@ syscall_read (int fd, void *buf, uint32_t size)
 /* Writes size bytes from buffer to the open file fd. Returns the number of
    bytes actually written, which may be less than size if some bytes could not
    be written. */
-int
+static int
 syscall_write (int fd, const void* buf, uint32_t size)
 {
    if (fd == STDIN)
@@ -153,7 +154,7 @@ syscall_write (int fd, const void* buf, uint32_t size)
 
 /* Changes the next byte to be read or written in open file fd to position,
    expressed in bytes from the beginning of the file. */
-void
+static void
 syscall_seek (int fd, uint32_t position)
 {
    /* NOT YET IMPLEMENTED */
@@ -161,7 +162,7 @@ syscall_seek (int fd, uint32_t position)
 
 /* Returns the position of the next byte to be read or written in open file fd,
    expressed in bytes from the beginning of the file. */
-uint32_t
+static uint32_t
 syscall_tell (int fd) 
 {
    /* NOT YET IMPLEMENTED */
@@ -171,13 +172,13 @@ syscall_tell (int fd)
 /* Closes file descriptor fd. Exiting or terminating a process implicitly
    closes all its open file descriptors, as if by calling this function for
    each one. */
-void
+static void
 syscall_close (int fd)
 {
     
 }
 
-void*
+static void *
 syscall_arg (void *esp, int index)
 {
   return (char *) esp + (index * sizeof (void *));

@@ -131,8 +131,8 @@ int fdt_next (void);
 bool fdt_cmp (const struct hash_elem *a,
                   const struct hash_elem *b,
                   void *aux);
-
 unsigned fdt_hash (const struct hash_elem *e, void *aux);
+int fdt_next (struct hash *fdt_hash);
 
 extern bool thread_mlfqs;
 
