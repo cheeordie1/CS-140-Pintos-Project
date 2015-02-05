@@ -9,6 +9,7 @@
 #include "userprog/pagedir.h"
 #include "userprog/tss.h"
 #include "filesys/directory.h"
+#include "filesys/file.h"
 #include "filesys/filesys.h"
 #include "threads/flags.h"
 #include "threads/init.h"
@@ -19,9 +20,6 @@
 #include "threads/vaddr.h"
 /* Delete later */
 #include "threads/synch.h"
-
-#define FD_SIZE 16
-#define MAX_FDS 128
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *file_name, char *cmdline, void (**eip) (void), void **esp);
@@ -115,6 +113,9 @@ process_exit (void)
   struct thread *cur = thread_current ();
   uint32_t *pd;
 
+  file_close (cur->exec);
+  free (cur->exec_name);
+ 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
@@ -241,6 +242,8 @@ load (const char *file_name, char *cmdline, void (**eip) (void), void **esp)
     goto done;
   process_activate ();
 
+  hash_init (&t->fd_hash, fdt_hash, NULL, NULL);
+
   /* Open executable file. */
   file = filesys_open (file_name);
   if (file == NULL) 
@@ -261,6 +264,11 @@ load (const char *file_name, char *cmdline, void (**eip) (void), void **esp)
       printf ("load: %s: error loading executable\n", file_name);
       goto done; 
     }
+
+  file_deny_write (file);
+  t->exec = file;
+  t->exec_name = malloc (strnlen (file_name, PGSIZE) + 1);
+  strlcpy (t->exec_name, file_name, strnlen (file_name, PGSIZE)); 
 
   /* Read program headers. */
   file_ofs = ehdr.e_phoff;
@@ -335,7 +343,6 @@ load (const char *file_name, char *cmdline, void (**eip) (void), void **esp)
 
  done:
   /* We arrive here whether the load is successful or not. */
-  file_close (file);
   return success;
 }
 

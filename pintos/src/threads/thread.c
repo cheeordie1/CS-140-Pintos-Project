@@ -83,40 +83,65 @@ static void thread_calculate_priority (struct thread *t);
 static void thread_calculate_recent_cpu (struct thread *t, void *aux UNUSED);
 static void thread_update_priorities (struct thread *t, void *aux UNUSED);
 
-bool 
-fdt_cmp (const struct hash_elem *a,
-             const struct hash_elem *b,
-             void *aux)
-{
-  return hash_entry (a, struct file_descriptor, elem)->fd < 
-         hash_entry (b, struct file_descriptor, elem)->fd;
-}
-
+/* Hash an element into the file descriptor hash by fd. Return the 
+   bucket number. */
 unsigned 
-fdt_hash (const struct hash_elem *e, void *aux)
+fdt_hash (const struct hash_elem *e, void *aux UNUSED)
 {
-  unsigned nbuckets = *(unsigned*) aux;
-  return hash_entry (e, struct file_descriptor, elem)->fd % nbuckets;
+  return hash_int (hash_entry (e, struct file_descriptor, elem)->fd);
 }
 
+/* Insert an element into the file descriptor hash */
+bool
+fdt_insert (struct hash *fdt_hash, struct file_descriptor *fdt_entry)
+{  
+  if ((fdt_entry->fd = fdt_next (fdt_hash)) < 0)
+    return false;
+  hash_insert (fdt_hash, &fdt_entry->elem);
+  return true;
+}
+
+/* Remove the element hashed by the given fd from the file table. */
+bool
+fdt_remove (struct hash *fdt_hash, int fd)
+{
+  struct hash_elem *remove_elem = fdt_search (fdt_hash, fd);
+  if (remove_elem == NULL)
+    return false;
+  hash_delete (fdt_hash, remove_elem);
+  return true;
+}
+
+/* Search the hash table for the entry hashed by the given fd. */
 struct hash_elem *
 fdt_search (struct hash *fdt_hash, int fd)
 {
+  struct hash_iterator iter;
   struct file_descriptor singleton;
   singleton.fd = fd;
-  hash_insert (fdt_hash, &singleton);
-  
+  struct list *search_bucket = hash_find_bucket (fdt_hash, &singleton.elem);
+  iter.hash = fdt_hash;
+  iter.bucket = search_bucket;
+  while (hash_next (&iter) != NULL)
+    {
+      if (hash_entry (iter.elem, struct file_descriptor, elem)->fd == fd)
+       return iter.elem;
+    }
+  return NULL;
 }
 
+/* Search the hash of file descriptors for the next available lowest 
+   file descriptor. Return -1 if too many files used. */
 int
 fdt_next (struct hash *fdt_hash)
 {
-  fd
   int curr_fd;
   for (curr_fd = 2; curr_fd < INT32_MAX; curr_fd++)
     {
-      ;
+      if (fdt_search (fdt_hash, curr_fd) != NULL)
+        return curr_fd; 
     }
+  return -1;
 }
 
 /* Initializes the threading system by transforming the code
@@ -702,8 +727,6 @@ init_thread (struct thread *t, const char *name, int priority)
   ASSERT (PRI_MIN <= priority && priority <= PRI_MAX);
   ASSERT (name != NULL);
  
-  hash_init (&t->fd_hash, fdt_hash, fdt_cmp, NULL);
-
   old_level = intr_disable ();
   memset (t, 0, sizeof *t);
   t->status = THREAD_BLOCKED;

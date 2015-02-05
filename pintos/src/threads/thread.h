@@ -2,10 +2,11 @@
 #define THREADS_THREAD_H
 
 #include <debug.h>
+#include <hash.h>
 #include <list.h>
 #include <stdint.h>
 #include "threads/fixed-point.h"
-#include <hash.h>
+#include "threads/vaddr.h"
 /* States in a thread's life cycle. */
 enum thread_status
   {
@@ -98,8 +99,6 @@ struct thread
     bool recently_up;                   /* Boolean to let thread mlfqs know when we update. */
     bool donated;                       /* Boolean to let thread donation know when we get donated to. */
 
-    struct hash fd_hash;                /* Table of all file descriptors */
-
     struct list *thread_pl;             /* Priority list that currently contains this thread. */
     struct thread *waiting_for_tlock;   /* Lock that the thread is waiting on. */ 
     struct list acquired_locks;         /* List of locks that this thread has acquired. */
@@ -109,7 +108,10 @@ struct thread
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
+    struct file *exec;                  /* File pointer to the process executable file. */
+    char *exec_name;                         /* Name of the process executable file. */
     uint32_t *pagedir;                  /* Page directory. */
+    struct hash fd_hash;                /* Table of all file descriptors. */
 #endif
 
     /* Owned by thread.c. */
@@ -119,21 +121,22 @@ struct thread
 struct file_descriptor
   {
     int fd;
+    struct file *file_;
     struct hash_elem elem; 
   };
 
-/* returns next available file descriptor */
-int fdt_next (void);
+bool fdt_cmp (const struct hash_elem *a,
+                  const struct hash_elem *b,
+                  void *aux);
+bool fdt_insert (struct hash *fdt_hash, struct file_descriptor *fdt_entry);
+unsigned fdt_hash (const struct hash_elem *e, void *aux UNUSED);
+int fdt_next (struct hash *fdt_hash);
+bool fdt_remove (struct hash *fdt_hash, int fd);
+struct hash_elem *fdt_search (struct hash *fdt_hash, int fd);
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
-bool fdt_cmp (const struct hash_elem *a,
-                  const struct hash_elem *b,
-                  void *aux);
-unsigned fdt_hash (const struct hash_elem *e, void *aux);
-int fdt_next (struct hash *fdt_hash);
-
 extern bool thread_mlfqs;
 
 void thread_init (void);

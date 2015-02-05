@@ -6,13 +6,11 @@
 #include "threads/thread.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
+#include "devices/input.h"
 #include "devices/shutdown.h"
-
-
 #include "lib/kernel/hash.h"
-
-#define STDIN 1
-#define STDOUT 0
+// delete later
+#include "threads/synch.h"
 
 static void syscall_handler (struct intr_frame *);
 static void syscall_halt (void);
@@ -46,13 +44,16 @@ syscall_halt (void)
 }
 
 /* Terminates the current user program, returning status to the kernel. If the
-   process's parent waits for it (see below), this is the status that will be
+   process's parent waits for it, this is the status that will be
    returned. Conventionally, a status of 0 indicates success and nonzero values
    indicate errors. */
 static void
 syscall_exit (int status)
 {
-  printf ("Exiting!\n");
+  // TODO check address of status
+  struct thread *t = thread_current ();
+  printf ("%s: exit(%d)\n", t->exec_name, status);
+  process_exit ();
 }
 
 /* Runs the executable whose name is given in cmd_line, passing any given
@@ -64,8 +65,9 @@ syscall_exit (int status)
 static pid_t
 syscall_exec (const char *cmd_line)
 {
-  /* NOT YET IMPLEMENTED */
-  return -1;
+  // TODO check address of cmd_line
+  pid_t process = process_execute (cmd_line);
+  return process;
 }
 
 /* Waits for a child process pid and retrieves the child's exit status.
@@ -80,8 +82,10 @@ syscall_exec (const char *cmd_line)
 static int
 syscall_wait (pid_t pid)
 {
-  /* NOT YET IMPLEMENTED */
-  return -1;
+  // TODO check address of pid
+  while (true)
+    barrier ();
+  return pid;
 }
 
 /* Creates a new file called file initially initial_size bytes in size. Returns
@@ -111,14 +115,17 @@ static int
 syscall_open (const char *file)
 {
   // TODO Check the file * for proper address
+  // TODO call file_deny_write if executable
   struct thread *t = thread_current ();
   struct file_descriptor *fdt_entry;
   if (!(fdt_entry = malloc (sizeof (struct file_descriptor))))
-      return -1;
-  
-  fdt_entry->fd = fdt_next (&t->fd_hash);
-  hash_insert (&t->fd_hash, &fdt_entry->elem);
-  struct file *open_file = filesys_open (file);
+    return -1;
+  if (!fdt_insert (&t->fd_hash, fdt_entry))
+    return -1;
+  struct file *open_file;
+  if ((open_file = filesys_open (file)) == NULL)
+    return -1;
+  fdt_entry->file_ = open_file;
   return fdt_entry->fd;
 }
 
@@ -126,8 +133,12 @@ syscall_open (const char *file)
 static int
 syscall_filesize (int fd)
 {
-   /* NOT YET IMPLEMENTED */
-  return 0;
+  // TODO check the address for proper addressing
+  struct thread *t = thread_current ();
+  struct hash_elem *fd_entry;
+  if ((fd_entry = fdt_search (&t->fd_hash, fd)) == NULL)
+    return -1;
+  return file_length (hash_entry (fd_entry, struct file_descriptor, elem)->file_);
 }
 
 /* Reads size bytes from the file open as fd into buffer. Returns the number of
@@ -137,8 +148,20 @@ syscall_filesize (int fd)
 static int
 syscall_read (int fd, void *buf, uint32_t size)
 {
-   /* NOT YET IMPLEMENTED */
-  return -1;
+  // TODO check the addresses of fd, buf, size
+  uint8_t buffer[size];
+  int bytes_read = 0;
+  if (fd == STDIN_FILENO)
+    {
+      uint32_t ch;
+      for (ch = 0; ch < size; ch++)
+        {
+          buffer[ch] = input_getc ();
+          bytes_read++;
+        }
+    }
+  // TODO implement reading non STDOUT files
+  return bytes_read;
 }
 
 /* Writes size bytes from buffer to the open file fd. Returns the number of
@@ -147,9 +170,15 @@ syscall_read (int fd, void *buf, uint32_t size)
 static int
 syscall_write (int fd, const void* buf, uint32_t size)
 {
-   if (fd == STDIN)
-     putbuf (buf, size);
-  return 0;
+  // TODO check addresses of fd, buf, size
+  int bytes_written = 0; 
+  if (fd == STDOUT_FILENO)
+    {
+      putbuf (buf, size);
+      bytes_written = size;
+    }
+  // TODO implement writing non STDIN files
+  return bytes_written;
 }
 
 /* Changes the next byte to be read or written in open file fd to position,
@@ -157,7 +186,13 @@ syscall_write (int fd, const void* buf, uint32_t size)
 static void
 syscall_seek (int fd, uint32_t position)
 {
-   /* NOT YET IMPLEMENTED */
+  // TODO check addresses of fd, position struct
+  struct thread *t = thread_current ();
+  struct hash_elem *fd_entry;
+  if ((fd_entry = fdt_search (&t->fd_hash, fd)) == NULL)
+    return;
+  file_seek (hash_entry (fd_entry, struct file_descriptor, elem)->file_,
+             position);
 }
 
 /* Returns the position of the next byte to be read or written in open file fd,
@@ -165,8 +200,12 @@ syscall_seek (int fd, uint32_t position)
 static uint32_t
 syscall_tell (int fd) 
 {
-   /* NOT YET IMPLEMENTED */
-  return 0;
+  // TODO check address of fd
+  struct thread *t = thread_current ();
+  struct hash_elem *fd_entry;
+  if ((fd_entry = fdt_search (&t->fd_hash, fd)) == NULL)
+    return 0;
+  return file_tell (hash_entry (fd_entry, struct file_descriptor, elem)->file_);
 }
 
 /* Closes file descriptor fd. Exiting or terminating a process implicitly
@@ -175,15 +214,27 @@ syscall_tell (int fd)
 static void
 syscall_close (int fd)
 {
-    
+  struct thread *t = thread_current ();
+  struct hash_elem *fd_entry;
+  if ((fd_entry = fdt_search (&t->fd_hash, fd)) == NULL)
+    return;
+  hash_delete (&t->fd_hash, fd_entry);
+  struct file_descriptor *del_fd = hash_entry (fd_entry,
+                                               struct file_descriptor,
+                                               elem);
+  file_close (del_fd->file_);
+  free (del_fd);
 }
 
+/* Retrieves an argument at a given index from the stack pointer 
+   esp argument. */
 static void *
 syscall_arg (void *esp, int index)
 {
   return (char *) esp + (index * sizeof (void *));
 }
 
+/* Switch all cases of interrupt signal to call system calls. */
 static void
 syscall_handler (struct intr_frame *f) 
 {
