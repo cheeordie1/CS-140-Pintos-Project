@@ -20,6 +20,7 @@
 #include "threads/vaddr.h"
 /* Delete later */
 #include "threads/synch.h"
+#include "devices/timer.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *file_name, char *cmdline, void (**eip) (void), void **esp);
@@ -101,8 +102,11 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
-  while (true)
+  while (true){
+    printf ("Just waiting for thread %d\n", child_tid);
+    timer_sleep (100);
     barrier ();
+  }
   return -1;
 }
 
@@ -113,8 +117,10 @@ process_exit (void)
   struct thread *cur = thread_current ();
   uint32_t *pd;
 
-  file_close (cur->exec);
-  free (cur->exec_name);
+  if (cur->exec)
+    file_close (cur->exec);
+  if (cur->exec_name)
+    free (cur->exec_name);
  
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -265,10 +271,11 @@ load (const char *file_name, char *cmdline, void (**eip) (void), void **esp)
       goto done; 
     }
 
+  /* Set Thread state on current executable running. */
   file_deny_write (file);
   t->exec = file;
   t->exec_name = malloc (strnlen (file_name, PGSIZE) + 1);
-  strlcpy (t->exec_name, file_name, strnlen (file_name, PGSIZE)); 
+  strlcpy (t->exec_name, file_name, PGSIZE); 
 
   /* Read program headers. */
   file_ofs = ehdr.e_phoff;

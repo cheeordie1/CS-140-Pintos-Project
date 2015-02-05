@@ -109,7 +109,7 @@ struct thread
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     struct file *exec;                  /* File pointer to the process executable file. */
-    char *exec_name;                         /* Name of the process executable file. */
+    char *exec_name;                    /* Name of the process executable file. */
     uint32_t *pagedir;                  /* Page directory. */
     struct hash fd_hash;                /* Table of all file descriptors. */
 #endif

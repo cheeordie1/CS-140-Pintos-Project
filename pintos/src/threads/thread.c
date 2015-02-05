@@ -745,6 +745,8 @@ init_thread (struct thread *t, const char *name, int priority)
   t->recently_up = false;
   t->donated = false;
   t->thread_pl = NULL;
+  t->exec = NULL;
+  t->exec_name = NULL;
 
   /*initialize the stack of acquired locks*/  
   list_init (&t->acquired_locks);

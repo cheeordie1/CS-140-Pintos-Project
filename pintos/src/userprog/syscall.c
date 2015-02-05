@@ -53,7 +53,7 @@ syscall_exit (int status)
   // TODO check address of status
   struct thread *t = thread_current ();
   printf ("%s: exit(%d)\n", t->exec_name, status);
-  process_exit ();
+  thread_exit ();
 }
 
 /* Runs the executable whose name is given in cmd_line, passing any given
@@ -83,9 +83,8 @@ static int
 syscall_wait (pid_t pid)
 {
   // TODO check address of pid
-  while (true)
-    barrier ();
-  return pid;
+  int status = process_wait (pid);
+  return status;
 }
 
 /* Creates a new file called file initially initial_size bytes in size. Returns
@@ -115,7 +114,6 @@ static int
 syscall_open (const char *file)
 {
   // TODO Check the file * for proper address
-  // TODO call file_deny_write if executable
   struct thread *t = thread_current ();
   struct file_descriptor *fdt_entry;
   if (!(fdt_entry = malloc (sizeof (struct file_descriptor))))
@@ -248,6 +246,7 @@ syscall_handler (struct intr_frame *f)
       /* Terminate this process. */
       case SYS_EXIT:            
         syscall_exit (*(int *) syscall_arg (f->esp, 1));
+        f->eax = *(int *) syscall_arg (f->esp, 1);
         break; 
       /* Start another process. */
       case SYS_EXEC:                   
