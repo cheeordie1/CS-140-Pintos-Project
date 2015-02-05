@@ -12,7 +12,6 @@
 #define list_elem_to_hash_elem(LIST_ELEM)                       \
         list_entry(LIST_ELEM, struct hash_elem, list_elem)
 
-static struct list *find_bucket (struct hash *, struct hash_elem *);
 static struct hash_elem *find_elem (struct hash *, struct list *,
                                     struct hash_elem *);
 static void insert_elem (struct hash *, struct list *, struct hash_elem *);
@@ -98,7 +97,7 @@ hash_destroy (struct hash *h, hash_action_func *destructor)
 struct hash_elem *
 hash_insert (struct hash *h, struct hash_elem *new)
 {
-  struct list *bucket = find_bucket (h, new);
+  struct list *bucket = hash_find_bucket (h, new);
   struct hash_elem *old = find_elem (h, bucket, new);
 
   if (old == NULL) 
@@ -114,7 +113,7 @@ hash_insert (struct hash *h, struct hash_elem *new)
 struct hash_elem *
 hash_replace (struct hash *h, struct hash_elem *new) 
 {
-  struct list *bucket = find_bucket (h, new);
+  struct list *bucket = hash_find_bucket (h, new);
   struct hash_elem *old = find_elem (h, bucket, new);
 
   if (old != NULL)
@@ -131,7 +130,7 @@ hash_replace (struct hash *h, struct hash_elem *new)
 struct hash_elem *
 hash_find (struct hash *h, struct hash_elem *e) 
 {
-  return find_elem (h, find_bucket (h, e), e);
+  return find_elem (h, hash_find_bucket (h, e), e);
 }
 
 /* Finds, removes, and returns an element equal to E in hash
@@ -144,7 +143,7 @@ hash_find (struct hash *h, struct hash_elem *e)
 struct hash_elem *
 hash_delete (struct hash *h, struct hash_elem *e)
 {
-  struct hash_elem *found = find_elem (h, find_bucket (h, e), e);
+  struct hash_elem *found = find_elem (h, hash_find_bucket (h, e), e);
   if (found != NULL) 
     {
       remove_elem (h, found);
@@ -302,8 +301,8 @@ hash_int (int i)
 }
 
 /* Returns the bucket in H that E belongs in. */
-static struct list *
-find_bucket (struct hash *h, struct hash_elem *e) 
+struct list *
+hash_find_bucket (struct hash *h, struct hash_elem *e) 
 {
   size_t bucket_idx = h->hash (e, h->aux) & (h->bucket_cnt - 1);
   return &h->buckets[bucket_idx];
@@ -402,7 +401,7 @@ rehash (struct hash *h)
            elem != list_end (old_bucket); elem = next) 
         {
           struct list *new_bucket
-            = find_bucket (h, list_elem_to_hash_elem (elem));
+            = hash_find_bucket (h, list_elem_to_hash_elem (elem));
           next = list_next (elem);
           list_remove (elem);
           list_push_front (new_bucket, elem);
