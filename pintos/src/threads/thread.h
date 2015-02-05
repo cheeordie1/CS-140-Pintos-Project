@@ -7,6 +7,13 @@
 #include <stdint.h>
 #include "threads/fixed-point.h"
 #include "threads/vaddr.h"
+
+#ifdef USERPROG
+
+#include "threads/synch.h"
+
+#endif
+
 /* States in a thread's life cycle. */
 enum thread_status
   {
@@ -107,11 +114,16 @@ struct thread
     struct list_elem elem;              /* List element. */
 
 #ifdef USERPROG
+
     /* Owned by userprog/process.c. */
     struct file *exec;                  /* File pointer to the process executable file. */
     char *exec_name;                    /* Name of the process executable file. */
     uint32_t *pagedir;                  /* Page directory. */
     struct hash fd_hash;                /* Table of all file descriptors. */
+    
+    struct lock cloaded_lock;           /* A lock that will signal when the child executable loads. */
+    struct lock *pload_lock;            /* A parent's lock that you wait on until the executable loads. */
+
 #endif
 
     /* Owned by thread.c. */

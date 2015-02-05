@@ -133,7 +133,6 @@ fdt_remove (struct hash *fdt_hash, int fd)
 struct hash_elem *
 fdt_search (struct hash *fdt_hash, int fd)
 {
-  struct hash_iterator iter;
   struct file_descriptor singleton;
   singleton.fd = fd;
   struct hash_elem *found_elem = hash_insert (fdt_hash, &singleton.elem);
@@ -744,8 +743,16 @@ init_thread (struct thread *t, const char *name, int priority)
   t->recently_up = false;
   t->donated = false;
   t->thread_pl = NULL;
+
+#ifdef USERPROG
+
   t->exec = NULL;
   t->exec_name = NULL;
+
+  lock_init (&t->cloaded_lock);
+  t->pload_lock = &thread_current ()->cloaded_lock;
+
+#endif
 
   /*initialize the stack of acquired locks*/  
   list_init (&t->acquired_locks);
@@ -814,6 +821,12 @@ thread_schedule_tail (struct thread *prev)
 #ifdef USERPROG
   /* Activate the new address space. */
   process_activate ();
+  if (cur->pload_lock != NULL)
+    {
+      lock_acquire (cur->pload_lock);
+      lock_release (cur->pload_lock);
+      cur->pload_lock = NULL;
+    }
 #endif
 
   /* If the thread we switched from is dying, destroy its struct

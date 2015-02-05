@@ -54,6 +54,7 @@ syscall_exit (int status)
 {
   // TODO check address of status
   struct thread *t = thread_current ();
+  // TODO destroy the fdt
   printf ("%s: exit(%d)\n", t->exec_name, status);
   thread_exit ();
 }
@@ -68,7 +69,11 @@ static pid_t
 syscall_exec (const char *cmd_line)
 {
   // TODO check address of cmd_line
+  struct thread *t = thread_current ();
+  while (!lock_try_acquire (&t->cloaded_lock))
+    thread_yield ();
   pid_t process = process_execute (cmd_line);
+  lock_release (&t->cloaded_lock);
   return process;
 }
 
@@ -99,7 +104,7 @@ syscall_create (const char *file, uint32_t initial_size)
   // TODO check if file * is proper address and initial_size is proper address
   bool success;
   while (!lock_try_acquire (&fs_lock))
-    barrier ();
+    thread_yield ();
   success = filesys_create (file, (off_t) initial_size);
   lock_release (&fs_lock);
   return success;
@@ -114,7 +119,7 @@ syscall_remove (const char *file)
   // TODO check if file * is proper address
   bool success;
   while (!lock_try_acquire (&fs_lock))
-    barrier ();
+    thread_yield ();
   success = filesys_remove (file);
   lock_release (&fs_lock);
   return success;
@@ -134,7 +139,7 @@ syscall_open (const char *file)
     return -1;
   struct file *open_file;
   while (!lock_try_acquire (&fs_lock))
-    barrier ();
+    thread_yield ();
   open_file = filesys_open (file);
   lock_release (&fs_lock);
   if (open_file == NULL)
@@ -154,7 +159,7 @@ syscall_filesize (int fd)
   if ((fd_entry = fdt_search (&t->fd_hash, fd)) == NULL)
     return -1;
   while (!lock_try_acquire (&fs_lock))
-    barrier ();
+    thread_yield ();
   size = file_length (hash_entry (fd_entry, struct file_descriptor, elem)->file_);
   lock_release (&fs_lock);
   return size;
@@ -174,7 +179,7 @@ syscall_read (int fd, void *buf, uint32_t size)
     {
       uint32_t ch;
       while (!lock_try_acquire (&fs_lock))
-        barrier ();
+        thread_yield ();
       for (ch = 0; ch < size; ch++)
         {
           buffer[ch] = input_getc ();
@@ -190,7 +195,7 @@ syscall_read (int fd, void *buf, uint32_t size)
   struct file *found_fd = 
   hash_entry (found_elem, struct file_descriptor, elem)->file_;
   while (!lock_try_acquire (&fs_lock))
-    barrier ();
+    thread_yield ();
   bytes_read = file_read (found_fd, buf, 0);
   lock_release (&fs_lock);
   return bytes_read;
@@ -207,7 +212,7 @@ syscall_write (int fd, const void* buf, uint32_t size)
   if (fd == STDOUT_FILENO)
     {
       while (!lock_try_acquire (&fs_lock))
-        barrier ();   
+        thread_yield ();   
       putbuf (buf, size);
       lock_release (&fs_lock);
       return size;
@@ -220,7 +225,7 @@ syscall_write (int fd, const void* buf, uint32_t size)
   struct file *found_fd = 
   hash_entry (found_elem, struct file_descriptor, elem)->file_;
   while (!lock_try_acquire (&fs_lock))
-    barrier ();
+    thread_yield ();
   bytes_written = file_write (found_fd, buf, 0);
   lock_release (&fs_lock);
   return bytes_written;
@@ -237,7 +242,7 @@ syscall_seek (int fd, uint32_t position)
   if ((fd_entry = fdt_search (&t->fd_hash, fd)) == NULL)
     return;
   while (!lock_try_acquire (&fs_lock))
-    barrier ();
+    thread_yield ();
   file_seek (hash_entry (fd_entry, struct file_descriptor, elem)->file_,
              position);
   lock_release (&fs_lock);
@@ -254,7 +259,7 @@ syscall_tell (int fd)
   if ((fd_entry = fdt_search (&t->fd_hash, fd)) == NULL)
     return 0;
   while (!lock_try_acquire (&fs_lock))
-    barrier ();
+    thread_yield ();
   return file_tell (hash_entry (fd_entry, struct file_descriptor, elem)->file_);
   lock_release (&fs_lock);
 }
@@ -274,7 +279,7 @@ syscall_close (int fd)
   struct file_descriptor *del_fd = 
   hash_entry (fd_entry, struct file_descriptor, elem);
   while (!lock_try_acquire (&fs_lock))
-    barrier ();
+    thread_yield ();
   file_close (del_fd->file_);
   lock_release (&fs_lock);
   free (del_fd);

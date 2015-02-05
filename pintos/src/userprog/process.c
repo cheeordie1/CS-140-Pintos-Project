@@ -103,9 +103,8 @@ int
 process_wait (tid_t child_tid UNUSED) 
 {
   while (true){
-    printf ("Just waiting for thread %d\n", child_tid);
+    printf ("just waiting for thread %d\n", child_tid);
     timer_sleep (100);
-    barrier ();
   }
   return -1;
 }
