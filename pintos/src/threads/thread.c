@@ -750,7 +750,10 @@ init_thread (struct thread *t, const char *name, int priority)
   t->exec_name = NULL;
 
   lock_init (&t->cloaded_lock);
-  t->pload_lock = &thread_current ()->cloaded_lock;
+  if (strcmp (t->name, "main") != 0)
+    t->pload_lock = &thread_current ()->cloaded_lock;
+  else
+    t->pload_lock = NULL;
 
 #endif
 
