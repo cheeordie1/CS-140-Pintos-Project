@@ -248,7 +248,7 @@ load (const char *file_name, char *cmdline, void (**eip) (void), void **esp)
     goto done;
   process_activate ();
 
-  hash_init (&t->fd_hash, fdt_hash, NULL, NULL);
+  hash_init (&t->fd_hash, fdt_hash, fdt_cmp, NULL);
 
   /* Open executable file. */
   file = filesys_open (file_name);
