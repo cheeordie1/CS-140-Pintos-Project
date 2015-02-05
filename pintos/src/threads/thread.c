@@ -8,6 +8,7 @@
 #include "threads/flags.h"
 #include "threads/interrupt.h"
 #include "threads/intr-stubs.h"
+#include "threads/malloc.h"
 #include "threads/palloc.h"
 #include "threads/switch.h"
 #include "threads/synch.h"
@@ -295,6 +296,10 @@ thread_create (const char *name, int priority,
   /* Initialize thread. */
   init_thread (t, name, priority);
   tid = t->tid = allocate_tid ();
+
+  #ifdef USERPROG
+    t->resource->tid = tid;
+  #endif
 
   /* Stack frame for kernel_thread(). */
   kf = alloc_frame (t, sizeof *kf);
@@ -749,6 +754,24 @@ init_thread (struct thread *t, const char *name, int priority)
   /*initialize the stack of acquired locks*/  
   list_init (&t->acquired_locks);
   t->waiting_for_tlock = NULL;
+
+
+  #ifdef USERPROG
+    list_init (&t->children);
+    struct child_resource *child = 
+      (struct child_resource*) malloc (sizeof (struct child_resource));
+    lock_init (child->child_exited);
+    lock_acquire (child->child_exited);
+    lock_init (t->children_list_lock);
+    lock_acquire (thread_current ()->children_list_lock);
+    t->pid = (pid_t) list_size (&thread_current ()->children);
+    child->pid = t->pid;
+    child->status = -1;
+    list_push_back(&(thread_current ()->children), &child->elem);
+    lock_release (thread_current ()->children_list_lock);
+  #endif
+
+
   list_push_back (&all_list, &t->allelem);
   intr_set_level (old_level);
 }

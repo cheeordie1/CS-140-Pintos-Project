@@ -65,9 +65,26 @@ syscall_exit (int status)
 static pid_t
 syscall_exec (const char *cmd_line)
 {
-  // TODO check address of cmd_line
-  pid_t process = process_execute (cmd_line);
-  return process;
+
+  //TODO check address of cmd_line
+  tid_t process = process_execute (cmd_line);
+  if (process == TID_ERROR) return TID_ERROR;
+  lock_acquire (thread_current ()->children_list_lock);
+  struct list_elem *e;
+  for (e = list_begin (&thread_current ()->children); 
+       e != list_end (&thread_current ()->children);
+       e = list_next (e))
+    {
+      struct child_resource *child = 
+        list_entry (e, struct child_resource, elem);
+      if (child->tid == process) 
+      {
+        lock_release (thread_current ()->children_list_lock);
+        return child->pid;
+      }
+    }
+  lock_release (thread_current ()->children_list_lock);
+  return TID_ERROR;
 }
 
 /* Waits for a child process pid and retrieves the child's exit status.
@@ -82,10 +99,27 @@ syscall_exec (const char *cmd_line)
 static int
 syscall_wait (pid_t pid)
 {
-  // TODO check address of pid
-  while (true)
-    barrier ();
-  return pid;
+  lock_acquire (thread_current ()->children_list_lock);
+  struct list_elem *e;
+  for (e = list_begin (&thread_current ()->children); 
+       e != list_end (&thread_current ()->children);
+       e = list_next (e))
+    {
+      struct child_resource *child = 
+        list_entry (e, struct child_resource, elem);
+      if (child->pid == pid) 
+      {
+        lock_release (thread_current ()->children_list_lock);
+        lock_acquire (child->child_exited);
+        return child->status;
+      }
+    }
+  lock_release (thread_current ()->children_list_lock);
+  return -1;
+  // // TODO check address of pid
+  // while (true)
+  //   barrier ();
+  // return pid;
 }
 
 /* Creates a new file called file initially initial_size bytes in size. Returns

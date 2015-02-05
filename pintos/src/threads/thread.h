@@ -21,6 +21,9 @@ enum thread_status
 typedef int tid_t;
 #define TID_ERROR ((tid_t) -1)          /* Error value for tid_t. */
 
+/* Process identifier type. */
+typedef int pid_t;
+
 /* Thread priorities. */
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
@@ -106,16 +109,32 @@ struct thread
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
+
+
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     struct file *exec;                  /* File pointer to the process executable file. */
     char *exec_name;                         /* Name of the process executable file. */
     uint32_t *pagedir;                  /* Page directory. */
     struct hash fd_hash;                /* Table of all file descriptors. */
+    
+     struct list children;
+     struct child_resource *resource;
+     struct lock *children_list_lock;  
+     pid_t pid;
 #endif
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
+  };
+
+struct child_resource
+  {
+    tid_t tid;
+    pid_t pid;
+    int status;
+    struct lock *child_exited;
+    struct list_elem elem;
   };
 
 struct file_descriptor
