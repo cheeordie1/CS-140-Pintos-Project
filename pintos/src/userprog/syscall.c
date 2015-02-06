@@ -3,14 +3,13 @@
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
 #include "threads/malloc.h"
+#include "threads/synch.h"
 #include "threads/thread.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
 #include "devices/input.h"
 #include "devices/shutdown.h"
 #include "lib/kernel/hash.h"
-// delete later
-#include "threads/synch.h"
 
 static void syscall_handler (struct intr_frame *);
 static void syscall_halt (void);
@@ -28,10 +27,13 @@ static uint32_t syscall_tell (int fd);
 static void syscall_close (int fd);
 static void* syscall_arg (void *esp, int index);
 
+static struct lock fs_lock;
+
 void
 syscall_init (void) 
 {
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
+  lock_init (&fs_lock);
 }
 
 /* Terminates Pintos by calling power_off() (declared in "threads/init.h").
@@ -52,6 +54,7 @@ syscall_exit (int status)
 {
   // TODO check address of status
   struct thread *t = thread_current ();
+  // TODO destroy the fdt
   printf ("%s: exit(%d)\n", t->exec_name, status);
   thread_exit ();
 }
@@ -66,7 +69,11 @@ static pid_t
 syscall_exec (const char *cmd_line)
 {
   // TODO check address of cmd_line
+  struct thread *t = thread_current ();
+  while (!lock_try_acquire (&t->cloaded_lock))
+    thread_yield ();
   pid_t process = process_execute (cmd_line);
+  lock_release (&t->cloaded_lock);
   return process;
 }
 
@@ -95,7 +102,12 @@ static bool
 syscall_create (const char *file, uint32_t initial_size)
 {
   // TODO check if file * is proper address and initial_size is proper address
-  return filesys_create (file, (off_t) initial_size);
+  bool success;
+  while (!lock_try_acquire (&fs_lock))
+    thread_yield ();
+  success = filesys_create (file, (off_t) initial_size);
+  lock_release (&fs_lock);
+  return success;
 }
 
 /* Deletes the file called file. Returns true if successful, false otherwise. A
@@ -105,7 +117,12 @@ static bool
 syscall_remove (const char *file)
 {
   // TODO check if file * is proper address
-  return filesys_remove (file);
+  bool success;
+  while (!lock_try_acquire (&fs_lock))
+    thread_yield ();
+  success = filesys_remove (file);
+  lock_release (&fs_lock);
+  return success;
 }
 
 /* Opens the file called file. Returns a nonnegative integer handle called a
@@ -121,7 +138,11 @@ syscall_open (const char *file)
   if (!fdt_insert (&t->fd_hash, fdt_entry))
     return -1;
   struct file *open_file;
-  if ((open_file = filesys_open (file)) == NULL)
+  while (!lock_try_acquire (&fs_lock))
+    thread_yield ();
+  open_file = filesys_open (file);
+  lock_release (&fs_lock);
+  if (open_file == NULL)
     return -1;
   fdt_entry->file_ = open_file;
   return fdt_entry->fd;
@@ -132,11 +153,16 @@ static int
 syscall_filesize (int fd)
 {
   // TODO check the address for proper addressing
+  int size;
   struct thread *t = thread_current ();
   struct hash_elem *fd_entry;
   if ((fd_entry = fdt_search (&t->fd_hash, fd)) == NULL)
     return -1;
-  return file_length (hash_entry (fd_entry, struct file_descriptor, elem)->file_);
+  while (!lock_try_acquire (&fs_lock))
+    thread_yield ();
+  size = file_length (hash_entry (fd_entry, struct file_descriptor, elem)->file_);
+  lock_release (&fs_lock);
+  return size;
 }
 
 /* Reads size bytes from the file open as fd into buffer. Returns the number of
@@ -152,13 +178,26 @@ syscall_read (int fd, void *buf, uint32_t size)
   if (fd == STDIN_FILENO)
     {
       uint32_t ch;
+      while (!lock_try_acquire (&fs_lock))
+        thread_yield ();
       for (ch = 0; ch < size; ch++)
         {
           buffer[ch] = input_getc ();
           bytes_read++;
         }
+       lock_release (&fs_lock);
     }
-  // TODO implement reading non STDOUT files
+  struct thread *t = thread_current ();
+  struct hash_elem *found_elem;
+  found_elem = fdt_search (&t->fd_hash, fd);
+  if (found_elem == NULL)
+    return -1;
+  struct file *found_fd = 
+  hash_entry (found_elem, struct file_descriptor, elem)->file_;
+  while (!lock_try_acquire (&fs_lock))
+    thread_yield ();
+  bytes_read = file_read (found_fd, buf, 0);
+  lock_release (&fs_lock);
   return bytes_read;
 }
 
@@ -172,10 +211,23 @@ syscall_write (int fd, const void* buf, uint32_t size)
   int bytes_written = 0; 
   if (fd == STDOUT_FILENO)
     {
+      while (!lock_try_acquire (&fs_lock))
+        thread_yield ();   
       putbuf (buf, size);
-      bytes_written = size;
+      lock_release (&fs_lock);
+      return size;
     }
-  // TODO implement writing non STDIN files
+  struct thread *t = thread_current ();
+  struct hash_elem *found_elem;
+  found_elem = fdt_search (&t->fd_hash, fd);
+  if (found_elem == NULL)
+    return 0;
+  struct file *found_fd = 
+  hash_entry (found_elem, struct file_descriptor, elem)->file_;
+  while (!lock_try_acquire (&fs_lock))
+    thread_yield ();
+  bytes_written = file_write (found_fd, buf, 0);
+  lock_release (&fs_lock);
   return bytes_written;
 }
 
@@ -189,8 +241,11 @@ syscall_seek (int fd, uint32_t position)
   struct hash_elem *fd_entry;
   if ((fd_entry = fdt_search (&t->fd_hash, fd)) == NULL)
     return;
+  while (!lock_try_acquire (&fs_lock))
+    thread_yield ();
   file_seek (hash_entry (fd_entry, struct file_descriptor, elem)->file_,
              position);
+  lock_release (&fs_lock);
 }
 
 /* Returns the position of the next byte to be read or written in open file fd,
@@ -203,7 +258,10 @@ syscall_tell (int fd)
   struct hash_elem *fd_entry;
   if ((fd_entry = fdt_search (&t->fd_hash, fd)) == NULL)
     return 0;
+  while (!lock_try_acquire (&fs_lock))
+    thread_yield ();
   return file_tell (hash_entry (fd_entry, struct file_descriptor, elem)->file_);
+  lock_release (&fs_lock);
 }
 
 /* Closes file descriptor fd. Exiting or terminating a process implicitly
@@ -212,15 +270,18 @@ syscall_tell (int fd)
 static void
 syscall_close (int fd)
 {
+  // TODO check address of fd
   struct thread *t = thread_current ();
   struct hash_elem *fd_entry;
   if ((fd_entry = fdt_search (&t->fd_hash, fd)) == NULL)
     return;
   hash_delete (&t->fd_hash, fd_entry);
-  struct file_descriptor *del_fd = hash_entry (fd_entry,
-                                               struct file_descriptor,
-                                               elem);
+  struct file_descriptor *del_fd = 
+  hash_entry (fd_entry, struct file_descriptor, elem);
+  while (!lock_try_acquire (&fs_lock))
+    thread_yield ();
   file_close (del_fd->file_);
+  lock_release (&fs_lock);
   free (del_fd);
 }
 
@@ -237,7 +298,7 @@ static void
 syscall_handler (struct intr_frame *f) 
 {
   int syscall = *(int*) f->esp;
-  switch(syscall)
+  switch (syscall)
     {
       /* Halt the operating system. */                   
       case SYS_HALT:
@@ -246,7 +307,6 @@ syscall_handler (struct intr_frame *f)
       /* Terminate this process. */
       case SYS_EXIT:            
         syscall_exit (*(int *) syscall_arg (f->esp, 1));
-        f->eax = *(int *) syscall_arg (f->esp, 1);
         break; 
       /* Start another process. */
       case SYS_EXEC:                   

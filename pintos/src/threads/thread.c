@@ -83,6 +83,15 @@ static void thread_calculate_priority (struct thread *t);
 static void thread_calculate_recent_cpu (struct thread *t, void *aux UNUSED);
 static void thread_update_priorities (struct thread *t, void *aux UNUSED);
 
+/* Compare two elements by their fd value */
+bool fdt_cmp (const struct hash_elem *a,
+              const struct hash_elem *b,
+              void *aux UNUSED)
+{
+  return hash_entry (a, struct file_descriptor, elem)->fd <
+         hash_entry (b, struct file_descriptor, elem)->fd;
+}
+
 /* Hash an element into the file descriptor hash by fd. Return the 
    bucket number. */
 unsigned 
@@ -94,54 +103,43 @@ fdt_hash (const struct hash_elem *e, void *aux UNUSED)
 /* Insert an element into the file descriptor hash */
 bool
 fdt_insert (struct hash *fdt_hash, struct file_descriptor *fdt_entry)
-{  
-  if ((fdt_entry->fd = fdt_next (fdt_hash)) < 0)
-    return false;
-  hash_insert (fdt_hash, &fdt_entry->elem);
-  return true;
+{ 
+  int curr_fd; 
+  for (curr_fd = 2; curr_fd < INT32_MAX; curr_fd++)
+    {
+      if (fdt_search (fdt_hash, curr_fd) == NULL)
+        {
+          fdt_entry->fd = curr_fd;
+          return true; 
+        }
+    }
+  return false; 
 }
 
 /* Remove the element hashed by the given fd from the file table. */
 bool
 fdt_remove (struct hash *fdt_hash, int fd)
 {
-  struct hash_elem *remove_elem = fdt_search (fdt_hash, fd);
-  if (remove_elem == NULL)
-    return false;
-  hash_delete (fdt_hash, remove_elem);
-  return true;
+  struct hash_elem *found_elem = fdt_search (fdt_hash, fd);
+  if (found_elem)
+    {
+      hash_delete (fdt_hash, found_elem);
+      return true;
+    }
+  return false;
 }
 
 /* Search the hash table for the entry hashed by the given fd. */
 struct hash_elem *
 fdt_search (struct hash *fdt_hash, int fd)
 {
-  struct hash_iterator iter;
   struct file_descriptor singleton;
   singleton.fd = fd;
-  struct list *search_bucket = hash_find_bucket (fdt_hash, &singleton.elem);
-  iter.hash = fdt_hash;
-  iter.bucket = search_bucket;
-  while (hash_next (&iter) != NULL)
-    {
-      if (hash_entry (iter.elem, struct file_descriptor, elem)->fd == fd)
-       return iter.elem;
-    }
+  struct hash_elem *found_elem = hash_insert (fdt_hash, &singleton.elem);
+  if (found_elem)
+    return found_elem;
+  hash_delete (fdt_hash, &singleton.elem);
   return NULL;
-}
-
-/* Search the hash of file descriptors for the next available lowest 
-   file descriptor. Return -1 if too many files used. */
-int
-fdt_next (struct hash *fdt_hash)
-{
-  int curr_fd;
-  for (curr_fd = 2; curr_fd < INT32_MAX; curr_fd++)
-    {
-      if (fdt_search (fdt_hash, curr_fd) != NULL)
-        return curr_fd; 
-    }
-  return -1;
 }
 
 /* Initializes the threading system by transforming the code
@@ -745,8 +743,19 @@ init_thread (struct thread *t, const char *name, int priority)
   t->recently_up = false;
   t->donated = false;
   t->thread_pl = NULL;
+
+#ifdef USERPROG
+
   t->exec = NULL;
   t->exec_name = NULL;
+
+  lock_init (&t->cloaded_lock);
+  if (strcmp (t->name, "main") != 0)
+    t->pload_lock = &thread_current ()->cloaded_lock;
+  else
+    t->pload_lock = NULL;
+
+#endif
 
   /*initialize the stack of acquired locks*/  
   list_init (&t->acquired_locks);
@@ -815,6 +824,12 @@ thread_schedule_tail (struct thread *prev)
 #ifdef USERPROG
   /* Activate the new address space. */
   process_activate ();
+  if (cur->pload_lock != NULL)
+    {
+      lock_acquire (cur->pload_lock);
+      lock_release (cur->pload_lock);
+      cur->pload_lock = NULL;
+    }
 #endif
 
   /* If the thread we switched from is dying, destroy its struct

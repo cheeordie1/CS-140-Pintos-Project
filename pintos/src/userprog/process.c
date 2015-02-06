@@ -103,9 +103,8 @@ int
 process_wait (tid_t child_tid UNUSED) 
 {
   while (true){
-    printf ("Just waiting for thread %d\n", child_tid);
+    printf ("just waiting for thread %d\n", child_tid);
     timer_sleep (100);
-    barrier ();
   }
   return -1;
 }
@@ -248,7 +247,7 @@ load (const char *file_name, char *cmdline, void (**eip) (void), void **esp)
     goto done;
   process_activate ();
 
-  hash_init (&t->fd_hash, fdt_hash, NULL, NULL);
+  hash_init (&t->fd_hash, fdt_hash, fdt_cmp, NULL);
 
   /* Open executable file. */
   file = filesys_open (file_name);
