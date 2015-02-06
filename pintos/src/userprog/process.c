@@ -18,18 +18,21 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
-/* Delete later */
 #include "threads/synch.h"
 #include "devices/timer.h"
 
+#define P_RUNNING 0
+#define P_EXITED 1
+#define P_LOADING 2
+
+struct proc_args 
+  {
+    char *file_name_;
+    struct relation *rel;
+  };
+
 static thread_func start_process NO_RETURN;
 static bool load (const char *file_name, char *cmdline, void (**eip) (void), void **esp);
-
-struct fd_list 
-{
-  int size;
-  void *fd_arr;
-};
 
 const char *ignore_delimiters = " \t\r";
 
@@ -41,6 +44,7 @@ tid_t
 process_execute (const char *file_name) 
 {
   char *fn_copy;
+  struct proc_args process_args;
   tid_t tid;
 
   /* Make a copy of FILE_NAME.
@@ -50,21 +54,46 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
+  struct relation *rel = (struct relation *) malloc (sizeof (struct relation));
+  list_push_back (&thread_current ()->children_in_r, &rel->elem);
+  lock_init (&rel->status_lock);
+  rel->p_status = P_RUNNING;
+  rel->c_status = P_LOADING;
+  rel->w_status = -1;
+  process_args.file_name_ = fn_copy;
+  process_args.rel = rel;
+
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create (file_name, PRI_DEFAULT, start_process, &process_args);
+  rel->c_id = tid;
+  while (!lock_try_acquire (&rel->status_lock))
+      thread_yield ();
+  while (rel->c_status == P_LOADING)
+    {
+      lock_release (&rel->status_lock);
+      while (!lock_try_acquire (&rel->status_lock))
+          thread_yield ();
+    }
+  if (rel->c_status == P_EXITED)
+    tid = TID_ERROR;
   if (tid == TID_ERROR)
-    palloc_free_page (fn_copy); 
+    palloc_free_page (fn_copy);
+  lock_release (&rel->status_lock);
   return tid;
 }
 
 /* A thread function that loads a user process and starts it
    running. */
 static void
-start_process (void *file_name_)
+start_process (void *process_args)
 {
+  struct thread *t = thread_current ();
   char *cmdline;
-  char *file_name = strtok_r (file_name_, ignore_delimiters,
+  char *file_name = strtok_r (((struct proc_args *) process_args)->file_name_,
+                              ignore_delimiters,
                               &cmdline);
+  t->parent_in_r = ((struct proc_args *) process_args)->rel;
+
   struct intr_frame if_;
   bool success;
 
@@ -77,8 +106,16 @@ start_process (void *file_name_)
 
   /* If load failed, quit. */
   palloc_free_page (file_name);
-  if (!success) 
-    thread_exit ();
+  while (!lock_try_acquire (&t->parent_in_r->status_lock))
+    thread_yield ();
+  if (!success)
+    {
+      t->parent_in_r->c_status = P_EXITED;
+      lock_release (&t->parent_in_r->status_lock);
+      thread_exit ();
+    }
+  t->parent_in_r->c_status = P_RUNNING;
+  lock_release (&t->parent_in_r->status_lock); 
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -100,13 +137,38 @@ start_process (void *file_name_)
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int
-process_wait (tid_t child_tid UNUSED) 
+process_wait (tid_t child_tid) 
 {
-  while (true){
-    printf ("just waiting for thread %d\n", child_tid);
-    timer_sleep (100);
-  }
-  return -1;
+  struct thread *t = thread_current ();
+  struct relation *rel = NULL;
+  struct list_elem *rel_iter;
+  /* Find the relation with the tid. */ 
+  for (rel_iter = list_begin (&t->children_in_r);
+       rel_iter != list_end (&t->children_in_r);
+       rel_iter = list_next (rel_iter))
+    {
+      rel = list_entry (rel_iter, struct relation, elem);
+      if (rel->c_id == child_tid)
+        break;
+      rel = NULL;
+    }
+  /* Exit because that's not our child! */
+  if (rel == NULL)
+    return -1;
+
+  /* Wait for the child to exit. */
+  while (!lock_try_acquire (&rel->status_lock))
+    thread_yield ();
+  while (rel->c_status == P_RUNNING)
+    {
+      lock_release (&rel->status_lock);
+      while (!lock_try_acquire (&rel->status_lock))
+        thread_yield ();
+    }
+  int status = rel->w_status;
+  list_remove (&rel->elem);
+  free (rel);
+  return status;
 }
 
 /* Free the current process's resources. */
@@ -114,12 +176,47 @@ void
 process_exit (void)
 {
   struct thread *cur = thread_current ();
+  struct relation *rel = NULL;
+  struct list_elem *rel_iter;
   uint32_t *pd;
+
+  printf ("%s: exit(%d)\n", cur->exec_name, cur->parent_in_r->w_status);
 
   if (cur->exec)
     file_close (cur->exec);
   if (cur->exec_name)
     free (cur->exec_name);
+
+  /* Cut ties with parent. */
+  if (cur->parent_in_r != NULL)
+    {
+      while (!lock_try_acquire (&cur->parent_in_r->status_lock))
+        thread_yield ();
+      cur->parent_in_r->c_status = P_EXITED;
+      if (cur->parent_in_r->p_status == P_EXITED)
+        free (cur->parent_in_r);
+      else
+        lock_release (&cur->parent_in_r->status_lock);
+    }
+
+   /* Orphan all children. */
+   for (rel_iter = list_begin (&cur->children_in_r);
+       rel_iter != list_end (&cur->children_in_r);
+       rel_iter = list_next (rel_iter))
+     {
+       rel = list_entry (rel_iter, struct relation, elem);
+       while (!lock_try_acquire (&rel->status_lock))
+         thread_yield ();
+       rel->p_status = P_EXITED;
+       if (rel->c_status == P_EXITED)
+         free (rel);
+       else
+         lock_release (&rel->status_lock);
+     }
+ 
+  /* Close all fds in fdt. */
+   
+ 
  
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -256,6 +353,9 @@ load (const char *file_name, char *cmdline, void (**eip) (void), void **esp)
       printf ("load: %s: open failed\n", file_name);
       goto done; 
     }
+  t->exec = file;
+  t->exec_name = malloc (strnlen (file_name, PGSIZE) + 1);
+  strlcpy (t->exec_name, file_name, PGSIZE); 
 
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
@@ -272,9 +372,7 @@ load (const char *file_name, char *cmdline, void (**eip) (void), void **esp)
 
   /* Set Thread state on current executable running. */
   file_deny_write (file);
-  t->exec = file;
-  t->exec_name = malloc (strnlen (file_name, PGSIZE) + 1);
-  strlcpy (t->exec_name, file_name, PGSIZE); 
+
 
   /* Read program headers. */
   file_ofs = ehdr.e_phoff;

@@ -54,8 +54,12 @@ syscall_exit (int status)
 {
   // TODO check address of status
   struct thread *t = thread_current ();
-  // TODO destroy the fdt
-  printf ("%s: exit(%d)\n", t->exec_name, status);
+  /* The status will never be checked until the child has exited,
+     so there is no race condition. */
+  while (!lock_try_acquire (&t->parent_in_r->status_lock))
+    thread_yield ();
+  t->parent_in_r->w_status = status;
+  lock_release (&t->parent_in_r->status_lock);
   thread_exit ();
 }
 
@@ -69,11 +73,7 @@ static pid_t
 syscall_exec (const char *cmd_line)
 {
   // TODO check address of cmd_line
-  struct thread *t = thread_current ();
-  while (!lock_try_acquire (&t->cloaded_lock))
-    thread_yield ();
   pid_t process = process_execute (cmd_line);
-  lock_release (&t->cloaded_lock);
   return process;
 }
 
@@ -90,6 +90,8 @@ static int
 syscall_wait (pid_t pid)
 {
   // TODO check address of pid
+  if (pid == TID_ERROR)
+    return -1;
   int status = process_wait (pid);
   return status;
 }
