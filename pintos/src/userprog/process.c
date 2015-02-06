@@ -76,9 +76,9 @@ process_execute (const char *file_name)
     }
   if (rel->c_status == P_EXITED)
     tid = TID_ERROR;
+  lock_release (&rel->status_lock);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy);
-  lock_release (&rel->status_lock);
   return tid;
 }
 
@@ -200,18 +200,24 @@ process_exit (void)
     }
 
    /* Orphan all children. */
-   for (rel_iter = list_begin (&cur->children_in_r);
-       rel_iter != list_end (&cur->children_in_r);
-       rel_iter = list_next (rel_iter))
+   rel_iter = list_begin (&cur->children_in_r);
+   while (rel_iter != list_end (&cur->children_in_r))
      {
        rel = list_entry (rel_iter, struct relation, elem);
        while (!lock_try_acquire (&rel->status_lock))
          thread_yield ();
-       rel->p_status = P_EXITED;
        if (rel->c_status == P_EXITED)
-         free (rel);
+         {
+           rel_iter = list_next (rel_iter);
+           list_remove (&rel->elem);
+           free (rel);
+         }
        else
-         lock_release (&rel->status_lock);
+         {
+           rel->p_status = P_EXITED;
+           rel_iter = list_next (rel_iter);
+           lock_release (&rel->status_lock);
+         }
      }
  
   /* Close all fds in fdt. */
