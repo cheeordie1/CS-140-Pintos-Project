@@ -749,11 +749,8 @@ init_thread (struct thread *t, const char *name, int priority)
   t->exec = NULL;
   t->exec_name = NULL;
 
-  lock_init (&t->cloaded_lock);
-  if (strcmp (t->name, "main") != 0)
-    t->pload_lock = &thread_current ()->cloaded_lock;
-  else
-    t->pload_lock = NULL;
+  list_init (&t->children_in_r);
+  t->parent_in_r = NULL;
 
 #endif
 
@@ -824,12 +821,6 @@ thread_schedule_tail (struct thread *prev)
 #ifdef USERPROG
   /* Activate the new address space. */
   process_activate ();
-  if (cur->pload_lock != NULL)
-    {
-      lock_acquire (cur->pload_lock);
-      lock_release (cur->pload_lock);
-      cur->pload_lock = NULL;
-    }
 #endif
 
   /* If the thread we switched from is dying, destroy its struct

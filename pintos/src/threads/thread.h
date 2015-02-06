@@ -2,17 +2,10 @@
 #define THREADS_THREAD_H
 
 #include <debug.h>
-#include <hash.h>
 #include <list.h>
 #include <stdint.h>
 #include "threads/fixed-point.h"
 #include "threads/vaddr.h"
-
-#ifdef USERPROG
-
-#include "threads/synch.h"
-
-#endif
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -27,6 +20,39 @@ enum thread_status
    You can redefine this to whatever type you like. */
 typedef int tid_t;
 #define TID_ERROR ((tid_t) -1)          /* Error value for tid_t. */
+
+#ifdef USERPROG
+
+#include <hash.h>
+#include "threads/synch.h"
+
+struct relation
+  {
+    tid_t c_id;                 /* Process ID of child. */
+    int p_status;               /* Hold the parent's status. */
+    int c_status;               /* Hold the child's status. */
+    int w_status;               /* Hold the status of child on exit. */
+    struct lock status_lock;    /* Hold this lock to read/write status. */
+    struct list_elem elem;      /* One relationship in a list. */ 
+  };
+
+
+struct file_descriptor
+  {
+    int fd;
+    struct file *file_;
+    struct hash_elem elem; 
+  };
+
+bool fdt_cmp (const struct hash_elem *a,
+                  const struct hash_elem *b,
+                  void *aux UNUSED);
+bool fdt_insert (struct hash *fdt_hash, struct file_descriptor *fdt_entry);
+unsigned fdt_hash (const struct hash_elem *e, void *aux UNUSED);
+bool fdt_remove (struct hash *fdt_hash, int fd);
+struct hash_elem *fdt_search (struct hash *fdt_hash, int fd);
+
+#endif
 
 /* Thread priorities. */
 #define PRI_MIN 0                       /* Lowest priority. */
@@ -83,12 +109,6 @@ typedef int tid_t;
    the `magic' member of the running thread's `struct thread' is
    set to THREAD_MAGIC.  Stack overflow will normally change this
    value, triggering the assertion. */
-/* The `elem' member has a dual purpose.  It can be an element in
-   the run queue (thread.c), or it can be an element in a
-   semaphore wait list (synch.c).  It can be used these two ways
-   only because they are mutually exclusive: only a thread in the
-   ready state is on the run queue, whereas only a thread in the
-   blocked state is on a semaphore wait list. */
 struct thread
   {
     /* Owned by thread.c. */
@@ -120,9 +140,9 @@ struct thread
     char *exec_name;                    /* Name of the process executable file. */
     uint32_t *pagedir;                  /* Page directory. */
     struct hash fd_hash;                /* Table of all file descriptors. */
-    
-    struct lock cloaded_lock;           /* A lock that will signal when the child executable loads. */
-    struct lock *pload_lock;            /* A parent's lock that you wait on until the executable loads. */
+
+    struct list children_in_r;          /* This thread is a parent to this relationship. */
+    struct relation *parent_in_r;       /* This thread is a child to this relationship. */
 
 #endif
 
@@ -130,20 +150,6 @@ struct thread
     unsigned magic;                     /* Detects stack overflow. */
   };
 
-struct file_descriptor
-  {
-    int fd;
-    struct file *file_;
-    struct hash_elem elem; 
-  };
-
-bool fdt_cmp (const struct hash_elem *a,
-                  const struct hash_elem *b,
-                  void *aux UNUSED);
-bool fdt_insert (struct hash *fdt_hash, struct file_descriptor *fdt_entry);
-unsigned fdt_hash (const struct hash_elem *e, void *aux UNUSED);
-bool fdt_remove (struct hash *fdt_hash, int fd);
-struct hash_elem *fdt_search (struct hash *fdt_hash, int fd);
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
