@@ -292,3 +292,4 @@ arena_to_block (struct arena *a, size_t idx)
                            + sizeof *a
                            + idx * a->desc->block_size);
 }
+

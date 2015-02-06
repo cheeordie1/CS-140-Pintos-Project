@@ -141,8 +141,8 @@ struct thread
     uint32_t *pagedir;                  /* Page directory. */
     struct hash fd_hash;                /* Table of all file descriptors. */
 
-    struct list children_in_r;          /* This thread is a parent to this relationship. */
-    struct relation *parent_in_r;       /* This thread is a child to this relationship. */
+    struct list children_in_r;          /* List of this thread's children threads. */
+    struct relation *parent_in_r;       /* Pointer to this thread's parent thread. */
 
 #endif
 

@@ -200,18 +200,22 @@ process_exit (void)
     }
 
    /* Orphan all children. */
-   for (rel_iter = list_begin (&cur->children_in_r);
-       rel_iter != list_end (&cur->children_in_r);
-       rel_iter = list_next (rel_iter))
+   while (rel_iter != list_end (&cur->children_in_r))
      {
        rel = list_entry (rel_iter, struct relation, elem);
        while (!lock_try_acquire (&rel->status_lock))
          thread_yield ();
-       rel->p_status = P_EXITED;
-       if (rel->c_status == P_EXITED)
-         free (rel);
-       else
-         lock_release (&rel->status_lock);
+       if (rel->c_status == P_EXITED) 
+         {
+           rel_iter = list_next (rel_iter);
+           free (rel);
+         }
+       else 
+         {
+           rel->p_status = P_EXITED;
+           rel_iter = list_next (rel_iter);
+           lock_release (&rel->status_lock);
+         }
      }
  
   /* Close all fds in fdt. */
