@@ -139,21 +139,21 @@ start_process (void *process_args)
 int
 process_wait (tid_t child_tid) 
 {
+  bool success = false;
   struct thread *t = thread_current ();
-  struct relation *rel = NULL;
+  struct relation *rel;
   struct list_elem *rel_iter;
   /* Find the relation with the tid. */ 
   for (rel_iter = list_begin (&t->children_in_r);
-       rel_iter != list_end (&t->children_in_r);
+       rel_iter != list_end (&t->children_in_r) && !success;
        rel_iter = list_next (rel_iter))
     {
       rel = list_entry (rel_iter, struct relation, elem);
       if (rel->c_id == child_tid)
-        break;
-      rel = NULL;
+          success = true;
     }
   /* Exit because that's not our child! */
-  if (rel == NULL)
+  if (!success)
     return -1;
 
   /* Wait for the child to exit. */
@@ -162,11 +162,13 @@ process_wait (tid_t child_tid)
   while (rel->c_status == P_RUNNING)
     {
       lock_release (&rel->status_lock);
+      thread_yield ();
       while (!lock_try_acquire (&rel->status_lock))
         thread_yield ();
     }
   int status = rel->w_status;
   list_remove (&rel->elem);
+  lock_release (&rel->status_lock);
   free (rel);
   return status;
 }
@@ -194,7 +196,10 @@ process_exit (void)
         thread_yield ();
       cur->parent_in_r->c_status = P_EXITED;
       if (cur->parent_in_r->p_status == P_EXITED)
-        free (cur->parent_in_r);
+        {
+          lock_release (&cur->parent_in_r->status_lock);
+          free (cur->parent_in_r);
+        }
       else
         lock_release (&cur->parent_in_r->status_lock);
     }
@@ -206,23 +211,20 @@ process_exit (void)
        rel = list_entry (rel_iter, struct relation, elem);
        while (!lock_try_acquire (&rel->status_lock))
          thread_yield ();
+       rel->p_status = P_EXITED;
+       rel_iter = list_next (rel_iter); 
+       list_remove (&rel->elem);
        if (rel->c_status == P_EXITED)
          {
-           rel_iter = list_next (rel_iter);
-           list_remove (&rel->elem);
+           lock_release (&rel->status_lock);
            free (rel);
          }
        else
-         {
-           rel->p_status = P_EXITED;
-           rel_iter = list_next (rel_iter);
-           lock_release (&rel->status_lock);
-         }
+         lock_release (&rel->status_lock);
      }
  
   /* Close all fds in fdt. */
    
- 
  
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
