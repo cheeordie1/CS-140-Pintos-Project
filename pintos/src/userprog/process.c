@@ -76,9 +76,9 @@ process_execute (const char *file_name)
     }
   if (rel->c_status == P_EXITED)
     tid = TID_ERROR;
+  lock_release (&rel->status_lock);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy);
-  lock_release (&rel->status_lock);
   return tid;
 }
 
@@ -142,6 +142,7 @@ process_wait (tid_t child_tid)
   struct thread *t = thread_current ();
   struct relation *rel = NULL;
   struct list_elem *rel_iter;
+  bool success;
   /* Find the relation with the tid. */ 
   for (rel_iter = list_begin (&t->children_in_r);
        rel_iter != list_end (&t->children_in_r);
@@ -149,11 +150,13 @@ process_wait (tid_t child_tid)
     {
       rel = list_entry (rel_iter, struct relation, elem);
       if (rel->c_id == child_tid)
-        break;
-      rel = NULL;
+        {
+          success = true;
+          break;
+        }
     }
   /* Exit because that's not our child! */
-  if (rel == NULL)
+  if (!success)
     return -1;
 
   /* Wait for the child to exit. */
@@ -167,7 +170,7 @@ process_wait (tid_t child_tid)
     }
   int status = rel->w_status;
   list_remove (&rel->elem);
-  free (rel);
+  //free (rel);
   return status;
 }
 
@@ -200,20 +203,23 @@ process_exit (void)
     }
 
    /* Orphan all children. */
+   rel_iter = list_begin (&cur->children_in_r);
    while (rel_iter != list_end (&cur->children_in_r))
      {
        rel = list_entry (rel_iter, struct relation, elem);
        while (!lock_try_acquire (&rel->status_lock))
          thread_yield ();
-       if (rel->c_status == P_EXITED) 
+       if (rel->c_status == P_EXITED)
          {
            rel_iter = list_next (rel_iter);
+           list_remove (&rel->elem);
            free (rel);
          }
-       else 
+       else
          {
            rel->p_status = P_EXITED;
            rel_iter = list_next (rel_iter);
+           list_remove (&rel->elem);
            lock_release (&rel->status_lock);
          }
      }

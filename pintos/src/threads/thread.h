@@ -142,7 +142,8 @@ struct thread
     struct hash fd_hash;                /* Table of all file descriptors. */
 
     struct list children_in_r;          /* List of this thread's children threads. */
-    struct relation *parent_in_r;       /* Pointer to this thread's parent thread. */
+    struct relation *parent_in_r;       /* Pointer to this thread's parent thread 
+                                           relationship resource. */
 
 #endif
 
