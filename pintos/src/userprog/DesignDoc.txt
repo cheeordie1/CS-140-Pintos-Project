@@ -1,0 +1,199 @@
+		     +--------------------------+
+       	     |		    CS 140		    |
+		     | PROJECT 2: USER PROGRAMS	|
+		     | 	   DESIGN DOCUMENT     	|
+		     +--------------------------+
+
+---- GROUP ----
+
+>> Fill in the names and email addresses of your group members.
+
+NicholasJ Chee-Awai  <cheeawai@stanford.edu>
+Elizabeth DavisEvans <eseraiah@stanford.edu>
+            
+---- PRELIMINARIES ----
+
+>> If you have any preliminary comments on your submission, notes for the
+>> TAs, or extra credit, please give them here.
+
+>> Please cite any offline or online sources you consulted while
+>> preparing your submission, other than the Pintos documentation, course
+>> text, lecture notes, and course staff.
+
+			   ARGUMENT PASSING
+			   ================
+
+---- DATA STRUCTURES ----
+
+>> A1: Copy here the declaration of each new or changed `struct' or
+>> `struct' member, global or static variable, `typedef', or
+>> enumeration.  Identify the purpose of each in 25 words or less.
+
+---- ALGORITHMS ----
+
+>> A2: Briefly describe how you implemented argument parsing.  How do
+>> you arrange for the elements of argv[] to be in the right order?
+>> How do you avoid overflowing the stack page?
+
+We used strtok_r() in the process.c:parse_cmd_line. process_execute() passes us
+a copy of the command line, so we cannibalize the copy so that we don't have to
+allocate memory for another string by replacing white spaces after words with
+null terminators. When we use strtok_r() to get a token, we immediately push it
+onto the stack and decrement esp immediately to ensure that the elements of
+argv[] are in the right order. To avoid overflowing the stack page we...
+
+---- RATIONALE ----
+
+>> A3: Why does Pintos implement strtok_r() but not strtok()?
+
+Pintos implements strtok_r() instead of strtok() because it is thread-safe.
+strtok() uses a static buffer while parsing, which is not thread-safe because
+it's declared globally which means it can be overwritten by any thread.
+Instead, strtok_r() requires users to create and pass in a buffer for the
+function to use. 
+
+>> A4: In Pintos, the kernel separates commands into a executable name
+>> and arguments.  In Unix-like systems, the shell does this
+>> separation.  Identify at least two advantages of the Unix approach.
+
+1) If the user parses commands, they have more control over how it is parsed.
+   Pintos always separates tokens by spaces, but there are more options for
+   delimiters in the shell.
+   For example, it would be hard to distinguish between 
+
+   "f = (x + y) * z" and
+   "f = x + (y * z)"
+
+   in Pintos command line parsing, specifically because we have more
+   delimiters than just white space.
+
+2) It's easier to set up a process stack in the Unix shell because you don't
+   have to parse the arguments. Instead, you can just pass the entire command
+   line as a string for the user to parse at their own discretion.
+
+
+
+			     SYSTEM CALLS
+			     ============
+
+---- DATA STRUCTURES ----
+
+>> B1: Copy here the declaration of each new or changed `struct' or
+>> `struct' member, global or static variable, `typedef', or
+>> enumeration.  Identify the purpose of each in 25 words or less.
+
+>> B2: Describe how file descriptors are associated with open files.
+>> Are file descriptors unique within the entire OS or just within a
+>> single process?
+
+In order to maintain users' ability to access different files, we store files
+in file entries in a struct and map them to file descriptors that we return to 
+the user when they call syscall_open (). A map of file descriptors and open
+files is stored in each thread's struct. File descriptors are only unique 
+within a single process, yet two file descriptors don't necessarily point to
+unique files (two fd's could point to the same file).
+
+---- ALGORITHMS ----
+
+>> B3: Describe your code for reading and writing user data from the
+>> kernel.
+
+syscall_read ()
+We split this call into two cases; STDIN and all other files. In both cases,
+we try to acquire a lock on the file yielding the cpu until we have 
+exclusive access.
+STDIN represents a file descriptor of 0. All other files are 2 to INT32_MAX.
+
+syscall_write ()
+Analogous to syscall_read (), we split this call into two cases; STDOUT and
+all other files. In both cases, we keep trying to acquire the lock to gain
+exclusive access to the file. We then write the specified number of bytes to
+the locked file.
+STDOUT represents a file descriptor of 1. All other files are 2 to INT32_MAX.
+
+>> B4: Suppose a system call causes a full page (4,096 bytes) of data
+>> to be copied from user space into the kernel.  What is the least
+>> and the greatest possible number of inspections of the page table
+>> (e.g. calls to pagedir_get_page()) that might result?  What about
+>> for a system call that only copies 2 bytes of data?  Is there room
+>> for improvement in these numbers, and how much?
+
+
+
+>> B5: Briefly describe your implementation of the "wait" system call
+>> and how it interacts with process termination.
+
+In order to implement wait we created a shared resource that allowed the parent
+and child processes to communicate with one another. We created our own shared
+resource struct for each parent-child pair that we declared on the heap to
+allow it to persist after any one thread in the parent-child pair exited. When
+a child process is created, it locks a status lock that it doesn't unlock until
+it exits. At the time of exit, the child also accesses the shared resource and
+updates its status within the resource that the parent can access if desired.
+So when a parent wants to wait on its child, it simply tries to
+acquire the child's status lock in the shared resource. This causes the parent
+thread to wait without running until it acquires access to the lock, or until
+the child exits.
+
+>> B6: Any access to user program memory at a user-specified address
+>> can fail due to a bad pointer value.  Such accesses must cause the
+>> process to be terminated.  System calls are fraught with such
+>> accesses, e.g. a "write" system call requires reading the system
+>> call number from the user stack, then each of the call's three
+>> arguments, then an arbitrary amount of user memory, and any of
+>> these can fail at any point.  This poses a design and
+>> error-handling problem: how do you best avoid obscuring the primary
+>> function of code in a morass of error-handling?  Furthermore, when
+>> an error is detected, how do you ensure that all temporarily
+>> allocated resources (locks, buffers, etc.) are freed?  In a few
+>> paragraphs, describe the strategy or strategies you adopted for
+>> managing these issues.  Give an example.
+
+---- SYNCHRONIZATION ----
+
+>> B7: The "exec" system call returns -1 if loading the new executable
+>> fails, so it cannot return before the new executable has completed
+>> loading.  How does your code ensure this?  How is the load
+>> success/failure status passed back to the thread that calls "exec"?
+
+>> B8: Consider parent process P with child process C.  How do you
+>> ensure proper synchronization and avoid race conditions when P
+>> calls wait(C) before C exits?  After C exits?  How do you ensure
+>> that all resources are freed in each case?  How about when P
+>> terminates without waiting, before C exits?  After C exits?  Are
+>> there any special cases?
+
+---- RATIONALE ----
+
+>> B9: Why did you choose to implement access to user memory from the
+>> kernel in the way that you did?
+
+>> B10: What advantages or disadvantages can you see to your design
+>> for file descriptors?
+
+>> B11: The default tid_t to pid_t mapping is the identity mapping.
+>> If you changed it, what advantages are there to your approach?
+
+			   SURVEY QUESTIONS
+			   ================
+
+Answering these questions is optional, but it will help us improve the
+course in future quarters.  Feel free to tell us anything you
+want--these questions are just to spur your thoughts.  You may also
+choose to respond anonymously in the course evaluations at the end of
+the quarter.
+
+>> In your opinion, was this assignment, or any one of the three problems
+>> in it, too easy or too hard?  Did it take too long or too little time?
+
+>> Did you find that working on a particular part of the assignment gave
+>> you greater insight into some aspect of OS design?
+
+>> Is there some particular fact or hint we should give students in
+>> future quarters to help them solve the problems?  Conversely, did you
+>> find any of our guidance to be misleading?
+
+>> Do you have any suggestions for the TAs to more effectively assist
+>> students, either for future quarters or the remaining projects?
+
+>> Any other comments?
