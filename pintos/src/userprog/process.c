@@ -146,12 +146,15 @@ process_wait (tid_t child_tid)
   struct list_elem *rel_iter;
   /* Find the relation with the tid. */ 
   for (rel_iter = list_begin (&t->children_in_r);
-       rel_iter != list_end (&t->children_in_r) && !success;
+       rel_iter != list_end (&t->children_in_r);
        rel_iter = list_next (rel_iter))
     {
       rel = list_entry (rel_iter, struct relation, elem);
       if (rel->c_id == child_tid)
+        {
           success = true;
+          break;
+        }
     }
   /* Exit because that's not our child! */
   if (!success)
@@ -441,7 +444,7 @@ load (const char *file_name, char *cmdline, void (**eip) (void), void **esp)
 
   /* Set up stack. */
   if (!setup_stack (esp))
-    goto done;
+      goto done;
   
   /* Push stack values */
   push_stack_args (file_name, cmdline, esp);
@@ -604,7 +607,7 @@ push_stack_args (const char *file_name, char *cmdline, void **esp)
   push (esp, 0, sizeof (void *));
 }
 
-/* Push a memory onto the stack. */
+/* Push memory onto the stack. */
 void
 push (void **esp, void *adr, size_t num_bytes)
 {

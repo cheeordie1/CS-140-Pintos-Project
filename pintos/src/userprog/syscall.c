@@ -11,6 +11,7 @@
 #include "devices/input.h"
 #include "devices/shutdown.h"
 #include "lib/kernel/hash.h"
+#include "userprog/pagedir.h"
 
 static void syscall_handler (struct intr_frame *);
 static void syscall_halt (void);
@@ -51,7 +52,6 @@ syscall_halt (void)
 static void
 syscall_exit (int status)
 {
-  // TODO check address of status
   struct thread *t = thread_current ();
   lock_acquire (&t->parent_in_r->status_lock);
   t->parent_in_r->w_status = status;
@@ -69,7 +69,6 @@ syscall_exit (int status)
 static pid_t
 syscall_exec (const char *cmd_line)
 {
-  // TODO check address of cmd_line
   pid_t process = process_execute (cmd_line);
   return process;
 }
@@ -86,7 +85,6 @@ syscall_exec (const char *cmd_line)
 static int
 syscall_wait (pid_t pid)
 {
-  // TODO check address of pid
   if (pid == TID_ERROR)
     return -1;
   int status = process_wait (pid);
@@ -100,7 +98,6 @@ syscall_wait (pid_t pid)
 static bool
 syscall_create (const char *file, uint32_t initial_size)
 {
-  // TODO check if file * is proper address and initial_size is proper address
   bool success;
   lock_acquire (&fs_lock);
   success = filesys_create (file, (off_t) initial_size);
@@ -114,7 +111,6 @@ syscall_create (const char *file, uint32_t initial_size)
 static bool
 syscall_remove (const char *file)
 {
-  // TODO check if file * is proper address
   bool success;
   lock_acquire (&fs_lock);
   success = filesys_remove (file);
@@ -127,7 +123,6 @@ syscall_remove (const char *file)
 static int
 syscall_open (const char *file)
 {
-  // TODO Check the file * for proper address
   struct thread *t = thread_current ();
   struct file_descriptor *fdt_entry;
   if (!(fdt_entry = malloc (sizeof (struct file_descriptor))))
@@ -148,7 +143,6 @@ syscall_open (const char *file)
 static int
 syscall_filesize (int fd)
 {
-  // TODO check the address for proper addressing
   int size;
   struct thread *t = thread_current ();
   struct hash_elem *fd_entry;
@@ -167,12 +161,11 @@ syscall_filesize (int fd)
 static int
 syscall_read (int fd, void *buf, uint32_t size)
 {
-  // TODO check the addresses of fd, buf, size
-  uint8_t buffer[size];
   int bytes_read = 0;
   if (fd == STDIN_FILENO)
     {
       uint32_t ch;
+      char *buffer = buf;
       lock_acquire (&fs_lock);
       for (ch = 0; ch < size; ch++)
         {
@@ -180,7 +173,6 @@ syscall_read (int fd, void *buf, uint32_t size)
           bytes_read++;
         }
        lock_release (&fs_lock);
-       memcpy (buf, buffer, bytes_read);
        return bytes_read;
     }
   struct thread *t = thread_current ();
@@ -202,7 +194,6 @@ syscall_read (int fd, void *buf, uint32_t size)
 static int
 syscall_write (int fd, const void* buf, uint32_t size)
 {
-  // TODO check addresses of fd, buf, size
   int bytes_written = 0; 
   if (fd == STDOUT_FILENO)
     {
@@ -229,7 +220,6 @@ syscall_write (int fd, const void* buf, uint32_t size)
 static void
 syscall_seek (int fd, uint32_t position)
 {
-  // TODO check addresses of fd, position struct
   struct thread *t = thread_current ();
   struct hash_elem *fd_entry;
   if ((fd_entry = fdt_search (&t->fd_hash, fd)) == NULL)
@@ -245,7 +235,6 @@ syscall_seek (int fd, uint32_t position)
 static uint32_t
 syscall_tell (int fd) 
 {
-  // TODO check address of fd
   struct thread *t = thread_current ();
   struct hash_elem *fd_entry;
   uint32_t pos;
@@ -263,7 +252,6 @@ syscall_tell (int fd)
 static void
 syscall_close (int fd)
 {
-  // TODO check address of fd
   struct thread *t = thread_current ();
   struct hash_elem *fd_entry;
   if ((fd_entry = fdt_search (&t->fd_hash, fd)) == NULL)
@@ -273,18 +261,25 @@ syscall_close (int fd)
   lock_release (&fs_lock);
 }
 
+bool is_valid_ptr (void *ptr);
+
 /* Retrieves an argument at a given index from the stack pointer 
    esp argument. */
 static void *
 syscall_arg (void *esp, int index)
 {
-  return (char *) esp + (index * sizeof (void *));
+  void *ret_arg = (char *) esp + (index * sizeof (void *));
+  if (!is_valid_ptr (ret_arg)) 
+    syscall_exit (-1); 
+  return ret_arg;
 }
 
 /* Switch all cases of interrupt signal to call system calls. */
 static void
 syscall_handler (struct intr_frame *f) 
 {
+  if (!is_valid_ptr (f->esp)) 
+    syscall_exit (-1); 
   int syscall = *(int*) f->esp;
   switch (syscall)
     {
@@ -350,4 +345,15 @@ syscall_handler (struct intr_frame *f)
         printf ("system call!\n");
         thread_exit ();
   }
+}
+
+/* Validate the address of the pointer passed in. */
+bool
+is_valid_ptr (void *ptr)
+{
+  if (!is_user_vaddr (ptr))
+    return false;
+  if (pagedir_get_page (thread_current ()->pagedir, ptr) == NULL)
+    return false;
+  return true;
 }
