@@ -184,6 +184,8 @@ process_exit (void)
   struct list_elem *rel_iter;
   uint32_t *pd;
 
+  printf ("%s: exit(%d)\n", cur->exec_name, cur->parent_in_r->w_status);
+
   if (cur->exec)
     file_close (cur->exec);
   if (cur->exec_name)

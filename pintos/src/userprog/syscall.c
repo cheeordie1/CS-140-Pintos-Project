@@ -13,6 +13,7 @@
 #include "lib/kernel/hash.h"
 #include "userprog/pagedir.h"
 
+static bool is_valid_ptr (const void *ptr);
 static void syscall_handler (struct intr_frame *);
 static void syscall_halt (void);
 static void syscall_exit (int status);
@@ -52,11 +53,7 @@ syscall_halt (void)
 static void
 syscall_exit (int status)
 {
-  struct thread *t = thread_current ();
-  lock_acquire (&t->parent_in_r->status_lock);
-  t->parent_in_r->w_status = status;
-  printf ("%s: exit(%d)\n", t->exec_name, status);
-  lock_release (&t->parent_in_r->status_lock);
+  thread_current ()->parent_in_r->w_status = status;
   thread_exit ();
 }
 
@@ -69,6 +66,8 @@ syscall_exit (int status)
 static pid_t
 syscall_exec (const char *cmd_line)
 {
+  if (!is_valid_ptr (cmd_line))
+    syscall_exit (-1);
   pid_t process = process_execute (cmd_line);
   return process;
 }
@@ -98,7 +97,8 @@ syscall_wait (pid_t pid)
 static bool
 syscall_create (const char *file, uint32_t initial_size)
 {
-  bool success;
+  if (!is_valid_ptr (file))
+    syscall_exit (-1); bool success;
   lock_acquire (&fs_lock);
   success = filesys_create (file, (off_t) initial_size);
   lock_release (&fs_lock);
@@ -111,6 +111,8 @@ syscall_create (const char *file, uint32_t initial_size)
 static bool
 syscall_remove (const char *file)
 {
+  if (!is_valid_ptr (file))
+    syscall_exit (-1);
   bool success;
   lock_acquire (&fs_lock);
   success = filesys_remove (file);
@@ -123,6 +125,8 @@ syscall_remove (const char *file)
 static int
 syscall_open (const char *file)
 {
+  if (!is_valid_ptr (file))
+    syscall_exit (-1);
   struct thread *t = thread_current ();
   struct file_descriptor *fdt_entry;
   if (!(fdt_entry = malloc (sizeof (struct file_descriptor))))
@@ -161,6 +165,8 @@ syscall_filesize (int fd)
 static int
 syscall_read (int fd, void *buf, uint32_t size)
 {
+  if (!is_valid_ptr (buf))
+    syscall_exit (-1);
   int bytes_read = 0;
   if (fd == STDIN_FILENO)
     {
@@ -194,6 +200,8 @@ syscall_read (int fd, void *buf, uint32_t size)
 static int
 syscall_write (int fd, const void* buf, uint32_t size)
 {
+  if (!is_valid_ptr (buf))
+    syscall_exit (-1);
   int bytes_written = 0; 
   if (fd == STDOUT_FILENO)
     {
@@ -260,8 +268,6 @@ syscall_close (int fd)
   fdt_close (fd_entry, t->fd_hash.aux);
   lock_release (&fs_lock);
 }
-
-bool is_valid_ptr (void *ptr);
 
 /* Retrieves an argument at a given index from the stack pointer 
    esp argument. */
@@ -348,9 +354,11 @@ syscall_handler (struct intr_frame *f)
 }
 
 /* Validate the address of the pointer passed in. */
-bool
-is_valid_ptr (void *ptr)
+static bool
+is_valid_ptr (const void *ptr)
 {
+  if (is_kernel_vaddr (ptr))
+    return false;
   if (!is_user_vaddr (ptr))
     return false;
   if (pagedir_get_page (thread_current ()->pagedir, ptr) == NULL)
