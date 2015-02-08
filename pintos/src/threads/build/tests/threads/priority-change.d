@@ -3,5 +3,4 @@ tests/threads/priority-change.o: ../../tests/threads/priority-change.c \
  ../../lib/stdbool.h ../../lib/stddef.h ../../lib/stdint.h \
  ../../lib/kernel/stdio.h ../../tests/threads/tests.h \
  ../../threads/init.h ../../threads/thread.h ../../lib/kernel/list.h \
- ../../threads/fixed-point.h ../../lib/kernel/hash.h \
- ../../lib/kernel/list.h
+ ../../threads/fixed-point.h ../../threads/vaddr.h ../../threads/loader.h

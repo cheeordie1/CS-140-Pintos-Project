@@ -36,6 +36,7 @@ struct relation
     struct list_elem elem;      /* One relationship in a list. */ 
   };
 
+struct lock fs_lock;
 
 struct file_descriptor
   {
@@ -47,9 +48,9 @@ struct file_descriptor
 bool fdt_cmp (const struct hash_elem *a,
                   const struct hash_elem *b,
                   void *aux UNUSED);
+void fdt_close (struct hash_elem *fd_entry, void *aux UNUSED);
 bool fdt_insert (struct hash *fdt_hash, struct file_descriptor *fdt_entry);
 unsigned fdt_hash (const struct hash_elem *e, void *aux UNUSED);
-bool fdt_remove (struct hash *fdt_hash, int fd);
 struct hash_elem *fdt_search (struct hash *fdt_hash, int fd);
 
 #endif

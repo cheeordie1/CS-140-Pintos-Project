@@ -3,5 +3,4 @@ threads/synch.o: ../../threads/synch.c ../../threads/synch.h \
  ../../lib/stdint.h ../../lib/stdio.h ../../lib/debug.h \
  ../../lib/stdarg.h ../../lib/kernel/stdio.h ../../lib/string.h \
  ../../threads/interrupt.h ../../threads/thread.h \
- ../../threads/fixed-point.h ../../lib/kernel/hash.h \
- ../../lib/kernel/list.h
+ ../../threads/fixed-point.h ../../threads/vaddr.h ../../threads/loader.h

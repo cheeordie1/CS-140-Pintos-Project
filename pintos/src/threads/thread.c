@@ -83,13 +83,26 @@ static void thread_calculate_priority (struct thread *t);
 static void thread_calculate_recent_cpu (struct thread *t, void *aux UNUSED);
 static void thread_update_priorities (struct thread *t, void *aux UNUSED);
 
+#ifdef USERPROG
+
 /* Compare two elements by their fd value */
-bool fdt_cmp (const struct hash_elem *a,
-              const struct hash_elem *b,
-              void *aux UNUSED)
+bool
+fdt_cmp (const struct hash_elem *a,
+         const struct hash_elem *b,
+         void *aux UNUSED)
 {
   return hash_entry (a, struct file_descriptor, elem)->fd <
          hash_entry (b, struct file_descriptor, elem)->fd;
+}
+
+/* Hash action function that closes a file from the fdt. */
+void
+fdt_close (struct hash_elem *fd_entry, void *aux UNUSED)
+{
+  hash_delete (&thread_current ()->fd_hash, fd_entry);
+  struct file_descriptor *del_fd = 
+  hash_entry (fd_entry, struct file_descriptor, elem);
+  file_close (del_fd->file_);
 }
 
 /* Hash an element into the file descriptor hash by fd. Return the 
@@ -109,24 +122,12 @@ fdt_insert (struct hash *fdt_hash, struct file_descriptor *fdt_entry)
     {
       if (fdt_search (fdt_hash, curr_fd) == NULL)
         {
-          fdt_entry->fd = curr_fd;
-          return true; 
-        }
+          fdt_entry->fd = curr_fd; 
+          hash_insert (fdt_hash, &fdt_entry->elem);
+          return true;
+        } 
     }
   return false; 
-}
-
-/* Remove the element hashed by the given fd from the file table. */
-bool
-fdt_remove (struct hash *fdt_hash, int fd)
-{
-  struct hash_elem *found_elem = fdt_search (fdt_hash, fd);
-  if (found_elem)
-    {
-      hash_delete (fdt_hash, found_elem);
-      return true;
-    }
-  return false;
 }
 
 /* Search the hash table for the entry hashed by the given fd. */
@@ -141,6 +142,8 @@ fdt_search (struct hash *fdt_hash, int fd)
   hash_delete (fdt_hash, &singleton.elem);
   return NULL;
 }
+
+#endif
 
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -164,7 +167,11 @@ thread_init (void)
   list_init (&ready_list);
   list_init (&all_list);
   list_init (&sleeping_list);
-  
+
+#ifdef USERPROG
+  lock_init (&fs_lock);
+#endif
+
   load_avg = 0;
   load_avg_coefficient = 0; 
 

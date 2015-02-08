@@ -1,5 +1,6 @@
 #include "userprog/syscall.h"
 #include <stdio.h>
+#include <string.h>
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
 #include "threads/malloc.h"
@@ -27,8 +28,6 @@ static uint32_t syscall_tell (int fd);
 static void syscall_close (int fd);
 static void* syscall_arg (void *esp, int index);
 
-static struct lock fs_lock;
-
 void
 syscall_init (void) 
 {
@@ -54,11 +53,9 @@ syscall_exit (int status)
 {
   // TODO check address of status
   struct thread *t = thread_current ();
-  /* The status will never be checked until the child has exited,
-     so there is no race condition. */
-  while (!lock_try_acquire (&t->parent_in_r->status_lock))
-    thread_yield ();
+  lock_acquire (&t->parent_in_r->status_lock);
   t->parent_in_r->w_status = status;
+  printf ("%s: exit(%d)\n", t->exec_name, status);
   lock_release (&t->parent_in_r->status_lock);
   thread_exit ();
 }
@@ -105,8 +102,7 @@ syscall_create (const char *file, uint32_t initial_size)
 {
   // TODO check if file * is proper address and initial_size is proper address
   bool success;
-  while (!lock_try_acquire (&fs_lock))
-    thread_yield ();
+  lock_acquire (&fs_lock);
   success = filesys_create (file, (off_t) initial_size);
   lock_release (&fs_lock);
   return success;
@@ -120,8 +116,7 @@ syscall_remove (const char *file)
 {
   // TODO check if file * is proper address
   bool success;
-  while (!lock_try_acquire (&fs_lock))
-    thread_yield ();
+  lock_acquire (&fs_lock);
   success = filesys_remove (file);
   lock_release (&fs_lock);
   return success;
@@ -137,16 +132,15 @@ syscall_open (const char *file)
   struct file_descriptor *fdt_entry;
   if (!(fdt_entry = malloc (sizeof (struct file_descriptor))))
     return -1;
-  if (!fdt_insert (&t->fd_hash, fdt_entry))
-    return -1;
   struct file *open_file;
-  while (!lock_try_acquire (&fs_lock))
-    thread_yield ();
+  lock_acquire (&fs_lock);
   open_file = filesys_open (file);
   lock_release (&fs_lock);
   if (open_file == NULL)
     return -1;
   fdt_entry->file_ = open_file;
+  if (!fdt_insert (&t->fd_hash, fdt_entry))
+    return -1;
   return fdt_entry->fd;
 }
 
@@ -160,8 +154,7 @@ syscall_filesize (int fd)
   struct hash_elem *fd_entry;
   if ((fd_entry = fdt_search (&t->fd_hash, fd)) == NULL)
     return -1;
-  while (!lock_try_acquire (&fs_lock))
-    thread_yield ();
+  lock_acquire (&fs_lock);
   size = file_length (hash_entry (fd_entry, struct file_descriptor, elem)->file_);
   lock_release (&fs_lock);
   return size;
@@ -180,14 +173,15 @@ syscall_read (int fd, void *buf, uint32_t size)
   if (fd == STDIN_FILENO)
     {
       uint32_t ch;
-      while (!lock_try_acquire (&fs_lock))
-        thread_yield ();
+      lock_acquire (&fs_lock);
       for (ch = 0; ch < size; ch++)
         {
           buffer[ch] = input_getc ();
           bytes_read++;
         }
        lock_release (&fs_lock);
+       memcpy (buf, buffer, bytes_read);
+       return bytes_read;
     }
   struct thread *t = thread_current ();
   struct hash_elem *found_elem;
@@ -196,9 +190,8 @@ syscall_read (int fd, void *buf, uint32_t size)
     return -1;
   struct file *found_fd = 
   hash_entry (found_elem, struct file_descriptor, elem)->file_;
-  while (!lock_try_acquire (&fs_lock))
-    thread_yield ();
-  bytes_read = file_read (found_fd, buf, 0);
+  lock_acquire (&fs_lock);
+  bytes_read = file_read (found_fd, buf, size);
   lock_release (&fs_lock);
   return bytes_read;
 }
@@ -213,8 +206,7 @@ syscall_write (int fd, const void* buf, uint32_t size)
   int bytes_written = 0; 
   if (fd == STDOUT_FILENO)
     {
-      while (!lock_try_acquire (&fs_lock))
-        thread_yield ();   
+      lock_acquire (&fs_lock);
       putbuf (buf, size);
       lock_release (&fs_lock);
       return size;
@@ -226,9 +218,8 @@ syscall_write (int fd, const void* buf, uint32_t size)
     return 0;
   struct file *found_fd = 
   hash_entry (found_elem, struct file_descriptor, elem)->file_;
-  while (!lock_try_acquire (&fs_lock))
-    thread_yield ();
-  bytes_written = file_write (found_fd, buf, 0);
+  lock_acquire (&fs_lock);
+  bytes_written = file_write (found_fd, buf, size);
   lock_release (&fs_lock);
   return bytes_written;
 }
@@ -243,8 +234,7 @@ syscall_seek (int fd, uint32_t position)
   struct hash_elem *fd_entry;
   if ((fd_entry = fdt_search (&t->fd_hash, fd)) == NULL)
     return;
-  while (!lock_try_acquire (&fs_lock))
-    thread_yield ();
+  lock_acquire (&fs_lock);
   file_seek (hash_entry (fd_entry, struct file_descriptor, elem)->file_,
              position);
   lock_release (&fs_lock);
@@ -258,12 +248,13 @@ syscall_tell (int fd)
   // TODO check address of fd
   struct thread *t = thread_current ();
   struct hash_elem *fd_entry;
+  uint32_t pos;
   if ((fd_entry = fdt_search (&t->fd_hash, fd)) == NULL)
     return 0;
-  while (!lock_try_acquire (&fs_lock))
-    thread_yield ();
-  return file_tell (hash_entry (fd_entry, struct file_descriptor, elem)->file_);
+  lock_acquire (&fs_lock);
+  pos = file_tell (hash_entry (fd_entry, struct file_descriptor, elem)->file_);
   lock_release (&fs_lock);
+  return pos;
 }
 
 /* Closes file descriptor fd. Exiting or terminating a process implicitly
@@ -277,14 +268,9 @@ syscall_close (int fd)
   struct hash_elem *fd_entry;
   if ((fd_entry = fdt_search (&t->fd_hash, fd)) == NULL)
     return;
-  hash_delete (&t->fd_hash, fd_entry);
-  struct file_descriptor *del_fd = 
-  hash_entry (fd_entry, struct file_descriptor, elem);
-  while (!lock_try_acquire (&fs_lock))
-    thread_yield ();
-  file_close (del_fd->file_);
+  lock_acquire (&fs_lock);
+  fdt_close (fd_entry, t->fd_hash.aux);
   lock_release (&fs_lock);
-  free (del_fd);
 }
 
 /* Retrieves an argument at a given index from the stack pointer 

@@ -19,6 +19,7 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "threads/synch.h"
+// delete later
 #include "devices/timer.h"
 
 #define P_RUNNING 0
@@ -54,7 +55,7 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
-  struct relation *rel = (struct relation *) malloc (sizeof (struct relation));
+  struct relation *rel = malloc (sizeof (struct relation));
   list_push_back (&thread_current ()->children_in_r, &rel->elem);
   lock_init (&rel->status_lock);
   rel->p_status = P_RUNNING;
@@ -66,19 +67,16 @@ process_execute (const char *file_name)
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (file_name, PRI_DEFAULT, start_process, &process_args);
   rel->c_id = tid;
-  while (!lock_try_acquire (&rel->status_lock))
-      thread_yield ();
+  lock_acquire (&rel->status_lock);
   while (rel->c_status == P_LOADING)
     {
       lock_release (&rel->status_lock);
-      while (!lock_try_acquire (&rel->status_lock))
-          thread_yield ();
+      thread_yield ();
+      lock_acquire (&rel->status_lock);
     }
   if (rel->c_status == P_EXITED)
-    tid = TID_ERROR;
+    tid = rel->c_id;
   lock_release (&rel->status_lock);
-  if (tid == TID_ERROR)
-    palloc_free_page (fn_copy);
   return tid;
 }
 
@@ -102,15 +100,18 @@ start_process (void *process_args)
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
+  lock_acquire (&fs_lock);
   success = load (file_name, cmdline, &if_.eip, &if_.esp);
+  lock_release (&fs_lock);
+
+  palloc_free_page (file_name);
 
   /* If load failed, quit. */
-  palloc_free_page (file_name);
-  while (!lock_try_acquire (&t->parent_in_r->status_lock))
-    thread_yield ();
+  lock_acquire (&t->parent_in_r->status_lock);
   if (!success)
     {
       t->parent_in_r->c_status = P_EXITED;
+      t->parent_in_r->c_id = TID_ERROR;
       lock_release (&t->parent_in_r->status_lock);
       thread_exit ();
     }
@@ -157,14 +158,12 @@ process_wait (tid_t child_tid)
     return -1;
 
   /* Wait for the child to exit. */
-  while (!lock_try_acquire (&rel->status_lock))
-    thread_yield ();
+  lock_acquire (&rel->status_lock);
   while (rel->c_status == P_RUNNING)
     {
       lock_release (&rel->status_lock);
       thread_yield ();
-      while (!lock_try_acquire (&rel->status_lock))
-        thread_yield ();
+      lock_acquire (&rel->status_lock);
     }
   int status = rel->w_status;
   list_remove (&rel->elem);
@@ -182,8 +181,6 @@ process_exit (void)
   struct list_elem *rel_iter;
   uint32_t *pd;
 
-  printf ("%s: exit(%d)\n", cur->exec_name, cur->parent_in_r->w_status);
-
   if (cur->exec)
     file_close (cur->exec);
   if (cur->exec_name)
@@ -192,8 +189,7 @@ process_exit (void)
   /* Cut ties with parent. */
   if (cur->parent_in_r != NULL)
     {
-      while (!lock_try_acquire (&cur->parent_in_r->status_lock))
-        thread_yield ();
+      lock_acquire (&cur->parent_in_r->status_lock);
       cur->parent_in_r->c_status = P_EXITED;
       if (cur->parent_in_r->p_status == P_EXITED)
         {
@@ -209,8 +205,7 @@ process_exit (void)
    while (rel_iter != list_end (&cur->children_in_r))
      {
        rel = list_entry (rel_iter, struct relation, elem);
-       while (!lock_try_acquire (&rel->status_lock))
-         thread_yield ();
+       lock_acquire (&rel->status_lock);
        rel->p_status = P_EXITED;
        rel_iter = list_next (rel_iter); 
        list_remove (&rel->elem);
@@ -224,7 +219,9 @@ process_exit (void)
      }
  
   /* Close all fds in fdt. */
-   
+  lock_acquire (&fs_lock);
+  hash_destroy (&cur->fd_hash, fdt_close);
+  lock_release (&fs_lock);
  
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -346,13 +343,17 @@ load (const char *file_name, char *cmdline, void (**eip) (void), void **esp)
   bool success = false;
   int i;
 
+  hash_init (&t->fd_hash, fdt_hash, fdt_cmp, NULL);
+
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
   if (t->pagedir == NULL) 
     goto done;
   process_activate ();
 
-  hash_init (&t->fd_hash, fdt_hash, fdt_cmp, NULL);
+  /* Copy file name into TCB. */
+  t->exec_name = malloc (strnlen (file_name, PGSIZE) + 1);
+  strlcpy (t->exec_name, file_name, PGSIZE); 
 
   /* Open executable file. */
   file = filesys_open (file_name);
@@ -362,8 +363,6 @@ load (const char *file_name, char *cmdline, void (**eip) (void), void **esp)
       goto done; 
     }
   t->exec = file;
-  t->exec_name = malloc (strnlen (file_name, PGSIZE) + 1);
-  strlcpy (t->exec_name, file_name, PGSIZE); 
 
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
@@ -380,7 +379,6 @@ load (const char *file_name, char *cmdline, void (**eip) (void), void **esp)
 
   /* Set Thread state on current executable running. */
   file_deny_write (file);
-
 
   /* Read program headers. */
   file_ofs = ehdr.e_phoff;
