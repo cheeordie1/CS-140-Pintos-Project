@@ -265,12 +265,19 @@ on load failure and its tid to tid_error on load failure and exiting. Or, in
 contrast, by setting its c_status to P_RUNNING on load success. The change in
 c_status is how the parent knows to check whether the child has loaded. 
 
-- talk about what we use to communicate
-- if someone calls wait, then they hold a lock to check the status of the
-child they're waiting on then release the lock, then yield, then acquire the
-lock again. In the loop they release, yield, acquire, then check the variable.
-And this is very similar to a condition variable but we can't use a condition
-variable because the child might signal before the parent waits. 
+Our relation struct lies outside of user memory and is our way of allowing
+parent and child processes to communicate. By constructing this struct in
+kernel memory, we can ensure that the memory will persist even after one of the
+processes exits. 
+
+When the parent calls wait, the parent acquires the status lock in the relation
+struct. It then loops, releasing the lock, yielding the CPU, re-acquiring the
+lock, and then checking the variable. This is very similar to the
+implementation of a condition variable, only our implementation does not use a
+semaphore. This small change is actually really important when handling race
+conditions in which the parent or child thread may exit before the other tries
+to access the lock. After all, if we used a condition variable, the child
+process might finish exiting and signal before the parent begins to wait. 
 
 
 >> B8: Consider parent process P with child process C.  How do you
@@ -280,13 +287,35 @@ variable because the child might signal before the parent waits.
 >> terminates without waiting, before C exits?  After C exits?  Are
 >> there any special cases?
 
-- relation exists outside of the child and parent
-- keep status in w_status variable so if it exits before the parent does, the
-parent can still retrieve the status from the variable and if the parent exits
-before the child does then the 
-If the parent exits then child wants to exit, the child has to free the memory
-If the child exits, then the parent wants to exit, the child has to free the
-memory
+As we mentioned earlier, we ensure proper synchronizaton and avoid race
+conditions by 1) creating a relation struct that persists outside of either
+process allowing the parent and child to communicate important information to
+one another and 2) utilize a lock instead of a condition variable to notify the
+parent process when the child process has exited with a status.
+
+P calls wait(C) before C exits?
+If P calls wait(C) before C exits, it simply loops on the relation lock until
+the child process has finally exited. 
+
+After C exits?
+Since we utilize a lock instead of a semaphore, the parent process doesn't have
+to worry about the child process signaling before the parent has begun waiting.
+If the child process has already exiting, the parent process simply acquires
+the lock and accesses information about the child's exit status through the
+relation struct.
+
+Ensure that all resources are freed in each case?
+In order to ensure that all resources are freed without possible double free
+errors, the last process to exit (between the parent and child) is the one that
+is responsible for freeing all of the memory.
+
+P terminates without waiting before C exits?
+In this case, the child process would simply update its information and then
+frees all of the resources.
+
+After C exits?
+P frees all of the resources in the relation struct. 
+
 
 ---- RATIONALE ----
 
