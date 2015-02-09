@@ -24,6 +24,7 @@ typedef int tid_t;
 #ifdef USERPROG
 
 #include <hash.h>
+#include "threads/malloc.h"
 #include "threads/synch.h"
 
 struct relation

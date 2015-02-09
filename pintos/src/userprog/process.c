@@ -19,8 +19,6 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "threads/synch.h"
-// delete later
-#include "devices/timer.h"
 
 #define P_RUNNING 0
 #define P_EXITED 1
