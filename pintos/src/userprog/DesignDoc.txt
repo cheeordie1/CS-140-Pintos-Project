@@ -8,8 +8,9 @@
 
 >> Fill in the names and email addresses of your group members.
 
-NicholasJ Chee-Awai  <cheeawai@stanford.edu>
-Elizabeth DavisEvans <eseraiah@stanford.edu>
+Nicholas  Chee-Awai  <cheeawai@stanford.edu>
+Elizabeth Davis      <eseraiah@stanford.edu>
+J         Evans      < jevans2@stanford.edu>
             
 ---- PRELIMINARIES ----
 
@@ -28,6 +29,12 @@ Elizabeth DavisEvans <eseraiah@stanford.edu>
 >> A1: Copy here the declaration of each new or changed `struct' or
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
+
+struct proc_args 
+  {
+    char *file_name_;      /* Arguments for thread_create */
+    struct relation *rel;  /* Allows parent/child processes to communicate. */
+  };
 
 ---- ALGORITHMS ----
 
@@ -81,6 +88,27 @@ function to use.
 >> B1: Copy here the declaration of each new or changed `struct' or
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
+
+/* Struct that the parent and child processes use to communicate with one
+   another to store exit statuses, and a lock that the parent tries to acquire
+   when it wants to wait on its child to exit. */ 
+struct relation
+  {
+    tid_t c_id;                 /* Process ID of child. */
+    int p_status;               /* Hold the parent's status. */
+    int c_status;               /* Hold the child's status. */
+    int w_status;               /* Hold the status of child on exit. */
+    struct lock status_lock;    /* Hold this lock to read/write status. */
+    struct list_elem elem;      /* One relationship in a list. */ 
+  };
+
+/* Struct that is stored per process to map a file descriptor to a file. */
+struct file_descriptor
+  {
+    int fd;                 /* An integer that maps to a specific file. */
+    struct file *file_;     /* The struct file* that user wants to write to. */
+    struct hash_elem elem;  /* Elem for storing our struct in a hash map. */
+  };
 
 >> B2: Describe how file descriptors are associated with open files.
 >> Are file descriptors unique within the entire OS or just within a
@@ -149,12 +177,101 @@ the child exits.
 >> paragraphs, describe the strategy or strategies you adopted for
 >> managing these issues.  Give an example.
 
+
+Whenever an argument is passed into a system call there is a chance that the
+pointer was passed in to bad memory whose address is outside of the user
+stack or unmapped. So, we call the functions in vaddr.h and pagedir.h in order
+to track errors. If the pointer that the user passes is kernel memory, (above
+PHYS_BASE) then the caller exits the thread. Otherwise, if the pointer is not
+in kernel memory and not in user memory, which is between the kernel at
+PHYS_BASE and the heap below it, then we exit the caller thread. If the memory
+is not mapped through a call to pagedir.c:get_page () to the current thread's
+virtual memory, then we also exit from the caller thread. 
+
+However, this strategy only checks whether the stack pointer is valid. However,
+there's still the potential that a pointer is passed that points to another
+pointer (ex. if esp points to a char* or int*) and the pointer underneath is
+what we're dereferencing and may run the risk of being NULL. Therefore, if esp
+points to another pointer, we actually want to examine the pointer underneath
+using the methodology we listed above. We exit with a status of -1 whenever the
+memory constraints
+are invalid. 
+
+For any buffer supplied by the user, we check whether buffer + offset is valid.
+If the user gives us a pointer that represents a buffer that we write to or
+read from, we have to ensure that the entire span of that buffer lies within
+the user's stack. So, we check the pointer to the buffer + the number of bytes
+to which we're going to read and/or write. 
+
+If we try to dereference a NULL pointer in the kernel thread, our strategy will
+catch it because the pointer would be outside of the user address space. But if
+the user dereferences a NULL pointer, it page faults which causes a kill on the
+user that faulted. So we just set its exit status to -1 and then let it die.
+
+
+
 ---- SYNCHRONIZATION ----
 
 >> B7: The "exec" system call returns -1 if loading the new executable
 >> fails, so it cannot return before the new executable has completed
 >> loading.  How does your code ensure this?  How is the load
 >> success/failure status passed back to the thread that calls "exec"?
+
+
+****** PARENT ******
+
+When thread_create () is called by the parent, it passes in a function pointer
+to start process along with the process arguments, which are the file name and
+the relation to the parent. In thread_create (), the process creates a thread
+ID and returns that to the caller. Afterwards, the process sets itself to
+schedule start_process with the function arguments, some time after it returns
+from thread_create (). Therefore, in between the caller getting the TID from
+thread_create () and the process returning from thread_create (), the  child
+process can completely run and exit before the parent process executes. This
+has many implications. However, the child's scheduling of start_process ()
+determines whether the child can load the executable file properly. If it
+cannot load the executable, the child will exit. But, because this can happen
+before the parent function ever progesses past the retreival of the TID, the
+TID can then belong to a child that erred in this way.
+
+So we need to prevent the child from exiting, until the parent knows whether it
+is loaded. To do this, we used the relation struct between the parent and child
+processes which contains the status of the child and the status of the parent
+and a lock which they can use to set their status. The statuses of the parent
+and child are one of three values: P_RUNNING, P_LOADING, P_EXITING. When a
+parent first creates the relation to pass to the child, the parent's status
+(p_status) is P_RUNNING and the child's status (c_status) is P_LOADING. The
+parent is going to wait in a loop after calling thread_create () until the
+child's status changes to P_LOADING. When this happens, the parent knows that
+the child has either exited or is running, so it can properly deal with each
+case. 
+
+If the child has exited, then it either failed to load or ran its entire
+process. In the first case, the child will set a value in the relation called
+w_status to -1, indicating the failure. In the second case, the child will
+simply have exited with w_status set to its exit status. To check for this, the
+parent will set the TID to the child's TID stored in the relation, which will
+be -1 on load failure and unchanged otherwise. The parent can then return the
+TID, knowing it's the proper value: -1 on load failure or the TID returned from
+thread_create () on exit and still running. 
+
+****** CHILD ******
+
+From the function start_process (), which is scheduled soon after
+thread_create (), the child will try to acquire the status lock in its relation
+struct as soon as possible. That way, the child can tell the parent whether it
+was successful in loading the executable, by setting its c_status to P_EXITED
+on load failure and its tid to tid_error on load failure and exiting. Or, in
+contrast, by setting its c_status to P_RUNNING on load success. The change in
+c_status is how the parent knows to check whether the child has loaded. 
+
+- talk about what we use to communicate
+- if someone calls wait, then they hold a lock to check the status of the
+child they're waiting on then release the lock, then yield, then acquire the
+lock again. In the loop they release, yield, acquire, then check the variable.
+And this is very similar to a condition variable but we can't use a condition
+variable because the child might signal before the parent waits. 
+
 
 >> B8: Consider parent process P with child process C.  How do you
 >> ensure proper synchronization and avoid race conditions when P
@@ -163,16 +280,42 @@ the child exits.
 >> terminates without waiting, before C exits?  After C exits?  Are
 >> there any special cases?
 
+- relation exists outside of the child and parent
+- keep status in w_status variable so if it exits before the parent does, the
+parent can still retrieve the status from the variable and if the parent exits
+before the child does then the 
+If the parent exits then child wants to exit, the child has to free the memory
+If the child exits, then the parent wants to exit, the child has to free the
+memory
+
 ---- RATIONALE ----
 
 >> B9: Why did you choose to implement access to user memory from the
 >> kernel in the way that you did?
 
+We have the syscall_handler use the syscall_args () function which wraps around
+pointer arithmetic on the esp stack arguments. This provides us with an easy
+way to access the stack arguments and also to validate them for whether or not
+the esp points to a valid address.
+
 >> B10: What advantages or disadvantages can you see to your design
 >> for file descriptors?
 
+One advantage of our file descriptors design is that it provides quick access
+and removel of our files based off the int fd. One disadvantage to our design
+is that the hashmap implementation requires that we malloc a lot of memory,
+which takes a lot of time per allocation. The hash also requires us to rehash
+our map when it runs out of space, which is a very expensive operation,
+especially since it grows at 2^n. Furthermore, since we don't pose a limit on
+the number of file descriptors open, a user can can easily take up all of our
+kernel memory by opening up a bunch of file descriptors.
+
+
 >> B11: The default tid_t to pid_t mapping is the identity mapping.
 >> If you changed it, what advantages are there to your approach?
+
+We used the default tid_t to pid_t mapping since it was simple and clean.
+
 
 			   SURVEY QUESTIONS
 			   ================
