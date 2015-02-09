@@ -98,7 +98,8 @@ static bool
 syscall_create (const char *file, uint32_t initial_size)
 {
   if (!is_valid_ptr (file))
-    syscall_exit (-1); bool success;
+    syscall_exit (-1); 
+  bool success;
   lock_acquire (&fs_lock);
   success = filesys_create (file, (off_t) initial_size);
   lock_release (&fs_lock);
@@ -198,7 +199,7 @@ syscall_read (int fd, void *buf, uint32_t size)
    bytes actually written, which may be less than size if some bytes could not
    be written. */
 static int
-syscall_write (int fd, const void* buf, uint32_t size)
+syscall_write (int fd, const void *buf, uint32_t size)
 {
   if (!is_valid_ptr (buf))
     syscall_exit (-1);

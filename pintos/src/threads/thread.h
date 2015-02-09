@@ -32,7 +32,7 @@ struct relation
     int p_status;               /* Hold the parent's status. */
     int c_status;               /* Hold the child's status. */
     int w_status;               /* Hold the status of child on exit. */
-    struct lock status_lock;    /* Hold this lock to read/write status. */
+    struct lock *status_lock;   /* Hold this lock to read/write status. */
     struct list_elem elem;      /* One relationship in a list. */ 
   };
 
@@ -142,6 +142,7 @@ struct thread
     uint32_t *pagedir;                  /* Page directory. */
     struct hash fd_hash;                /* Table of all file descriptors. */
 
+    struct lock children_lock;          /* Lock that every child uses to synchronize. */
     struct list children_in_r;          /* This thread is a parent to this relationship. */
     struct relation *parent_in_r;       /* This thread is a child to this relationship. */
 
