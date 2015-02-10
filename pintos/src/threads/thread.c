@@ -103,7 +103,6 @@ fdt_close (struct hash_elem *fd_entry, void *aux UNUSED)
   struct file_descriptor *del_fd = 
   hash_entry (fd_entry, struct file_descriptor, elem);
   file_close (del_fd->file_);
-  free (del_fd);
 }
 
 /* Hash an element into the file descriptor hash by fd. Return the 

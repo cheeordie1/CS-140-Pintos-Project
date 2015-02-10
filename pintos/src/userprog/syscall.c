@@ -14,7 +14,6 @@
 #include "userprog/pagedir.h"
 
 static bool is_valid_ptr (const void *ptr);
-static bool is_valid_buf (const void *buf, int size);
 static void syscall_handler (struct intr_frame *);
 static void syscall_halt (void);
 static void syscall_exit (int status);
@@ -353,18 +352,6 @@ syscall_handler (struct intr_frame *f)
         printf ("system call!\n");
         thread_exit ();
   }
-}
-
-static bool is_valid_buf (const void *buf, int size)
-{
-  char *cur = (char *) buf;
-  for (; size > 0; size--)
-    {
-      if (!is_valid_ptr (cur))
-        return false;
-      cur++;
-    }
-  return true;
 }
 
 /* Validate the address of the pointer passed in. */
