@@ -756,6 +756,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->exec = NULL;
   t->exec_name = NULL;
 
+  lock_init (&t->children_lock);
   list_init (&t->children_in_r);
   t->parent_in_r = NULL;
 

@@ -57,7 +57,7 @@ process_execute (const char *file_name)
 
   struct relation *rel = malloc (sizeof (struct relation));
   list_push_back (&thread_current ()->children_in_r, &rel->elem);
-  lock_init (&rel->status_lock);
+  rel->status_lock = &thread_current ()->children_lock;
   rel->p_status = P_RUNNING;
   rel->c_status = P_LOADING;
   rel->w_status = -1;
@@ -67,16 +67,16 @@ process_execute (const char *file_name)
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (file_name, PRI_DEFAULT, start_process, &process_args);
   rel->c_id = tid;
-  lock_acquire (&rel->status_lock);
+  lock_acquire (rel->status_lock);
   while (rel->c_status == P_LOADING)
     {
-      lock_release (&rel->status_lock);
+      lock_release (rel->status_lock);
       thread_yield ();
-      lock_acquire (&rel->status_lock);
+      lock_acquire (rel->status_lock);
     }
   if (rel->c_status == P_EXITED)
     tid = rel->c_id;
-  lock_release (&rel->status_lock);
+  lock_release (rel->status_lock);
   return tid;
 }
 
@@ -107,16 +107,16 @@ start_process (void *process_args)
   palloc_free_page (file_name);
 
   /* If load failed, quit. */
-  lock_acquire (&t->parent_in_r->status_lock);
+  lock_acquire (t->parent_in_r->status_lock);
   if (!success)
     {
       t->parent_in_r->c_status = P_EXITED;
       t->parent_in_r->c_id = TID_ERROR;
-      lock_release (&t->parent_in_r->status_lock);
+      lock_release (t->parent_in_r->status_lock);
       thread_exit ();
     }
   t->parent_in_r->c_status = P_RUNNING;
-  lock_release (&t->parent_in_r->status_lock); 
+  lock_release (t->parent_in_r->status_lock); 
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -161,16 +161,16 @@ process_wait (tid_t child_tid)
     return -1;
 
   /* Wait for the child to exit. */
-  lock_acquire (&rel->status_lock);
+  lock_acquire (rel->status_lock);
   while (rel->c_status == P_RUNNING)
     {
-      lock_release (&rel->status_lock);
+      lock_release (rel->status_lock);
       thread_yield ();
-      lock_acquire (&rel->status_lock);
+      lock_acquire (rel->status_lock);
     }
   int status = rel->w_status;
   list_remove (&rel->elem);
-  lock_release (&rel->status_lock);
+  lock_release (rel->status_lock);
   free (rel);
   return status;
 }
@@ -180,8 +180,6 @@ void
 process_exit (void)
 {
   struct thread *cur = thread_current ();
-  struct relation *rel = NULL;
-  struct list_elem *rel_iter;
   uint32_t *pd;
 
   printf ("%s: exit(%d)\n", cur->exec_name, cur->parent_in_r->w_status);
@@ -194,39 +192,50 @@ process_exit (void)
   /* Cut ties with parent. */
   if (cur->parent_in_r != NULL)
     {
-      lock_acquire (&cur->parent_in_r->status_lock);
+      lock_acquire (cur->parent_in_r->status_lock);
       cur->parent_in_r->c_status = P_EXITED;
       if (cur->parent_in_r->p_status == P_EXITED)
         {
-          lock_release (&cur->parent_in_r->status_lock);
+          lock_release (cur->parent_in_r->status_lock);
           free (cur->parent_in_r);
         }
       else
-        lock_release (&cur->parent_in_r->status_lock);
+        lock_release (cur->parent_in_r->status_lock);
     }
 
-   /* Orphan all children. */
-   rel_iter = list_begin (&cur->children_in_r);
-   while (rel_iter != list_end (&cur->children_in_r))
-     {
-       rel = list_entry (rel_iter, struct relation, elem);
-       lock_acquire (&rel->status_lock);
-       rel->p_status = P_EXITED;
-       rel_iter = list_next (rel_iter); 
-       list_remove (&rel->elem);
-       if (rel->c_status == P_EXITED)
-         {
-           lock_release (&rel->status_lock);
-           free (rel);
-         }
-       else
-         lock_release (&rel->status_lock);
-     }
+  /* Orphan all children. */
+  struct list_elem *rel_iter;
+  while (!list_empty (&cur->children_in_r))
+    {
+      rel_iter = list_begin (&cur->children_in_r);
+      struct relation *rel = list_entry (rel_iter, struct relation, elem);
+      lock_acquire (rel->status_lock);
+      rel->p_status = P_EXITED;
+      list_remove (&rel->elem);
+      if (rel->c_status == P_EXITED)
+        {
+          lock_release (rel->status_lock);
+          free (rel);
+        }
+      else
+        lock_release (rel->status_lock);
+    }
  
   /* Close all fds in fdt. */
   lock_acquire (&fs_lock);
   hash_destroy (&cur->fd_hash, fdt_close);
   lock_release (&fs_lock);
+
+  /* Release all locks. */
+  struct list_elem *del_entry;
+  while (!list_empty (&cur->acquired_locks))
+    {
+      del_entry = list_begin (&cur->acquired_locks);
+      struct lock *del_lock = list_entry (del_entry,
+                                          struct lock,
+                                          lock_list_elem);
+      lock_release (del_lock);
+    }
  
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
