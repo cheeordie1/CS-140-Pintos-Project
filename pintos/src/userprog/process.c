@@ -19,8 +19,6 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "threads/synch.h"
-// delete later
-#include "devices/timer.h"
 
 #define P_RUNNING 0
 #define P_EXITED 1
@@ -100,6 +98,7 @@ start_process (void *process_args)
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
+
   lock_acquire (&fs_lock);
   success = load (file_name, cmdline, &if_.eip, &if_.esp);
   lock_release (&fs_lock);
