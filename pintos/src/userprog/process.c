@@ -184,7 +184,12 @@ process_exit (void)
   printf ("%s: exit(%d)\n", cur->exec_name, cur->parent_in_r->w_status);
 
   if (cur->exec)
-    file_close (cur->exec);
+    {
+      lock_acquire (&fs_lock);
+      file_allow_write (cur->exec);
+      file_close (cur->exec);
+      lock_release (&fs_lock);
+    }
   if (cur->exec_name)
     free (cur->exec_name);
 
