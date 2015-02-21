@@ -129,18 +129,25 @@ syscall_open (const char *file)
   if (!is_valid_ptr (file))
     syscall_exit (-1);
   struct thread *t = thread_current ();
-  struct file_descriptor *fdt_entry;
-  if (!(fdt_entry = malloc (sizeof (struct file_descriptor))))
-    return -1;
+
   struct file *open_file;
   lock_acquire (&fs_lock);
   open_file = filesys_open (file);
   lock_release (&fs_lock);
   if (open_file == NULL)
     return -1;
+  struct file_descriptor *fdt_entry;
+  if (!(fdt_entry = malloc (sizeof (struct file_descriptor))))
+    return -1;
   fdt_entry->file_ = open_file;
   if (!fdt_insert (&t->fd_hash, fdt_entry))
-    return -1;
+    {
+      lock_acquire (&fs_lock);
+      file_close (open_file);
+      lock_release (&fs_lock);
+      free (fdt_entry);
+      return -1;
+    }
   return fdt_entry->fd;
 }
 
