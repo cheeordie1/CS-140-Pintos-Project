@@ -12,36 +12,40 @@ vm_SRC += vm/page.c
 #define USEDMASK 1
 #define NOTUSEDMASK 0
 
+static struct frame_table
+  {
+    uint32_t *ft;           /* pointer to the static array of ft entries. */
+    size_t cursor;      /* points to the current index in the frame table. */
+    struct bitmap *usage_map; 
+  } table;
+
+static struct frame_table table;
+
 /* Returns point to Kernel allocated frame table */
-void frame_table_init (struct frame_table *table, size_t user_page_limit)
+void frame_table_init (size_t user_page_limit)
 {
-  table->ft = (uint32_t*) calloc (user_page_limit, sizeof (uint32_t));
-  table->usage_map = bitmap_create (user_page_limit);
-  table->cursor = 0;
+  table.ft = (uint32_t*) calloc (user_page_limit, sizeof (uint32_t));
+  table.usage_map = bitmap_create (user_page_limit);
+  table.cursor = 0;
 }
 
-void insert_page (struct frame_table *table, void *addr)
+void update_frame_entry (void *addr)
 {
-  /* check not the final page */
-
-  //memset (table + (idx * sizeof (uint32_t)), addr, sizeof (uint32_t));
-  set_use (table, table->cursor, true); 
-  table->cursor++;
+  int index = table.cursor;
+  insert_page_addr (index, addr);
+  set_use (index, true);
+  table.cursor++;
 }
 
-void update_frame_entry (struct frame_table *table, void *addr)
+/* update table entry to addr */
+void insert_page_addr (size_t index, void *addr)
 {
-  addr = addr << PAGEADDR;
-  size_t index = table->cursor;
-  memset (table + index, addr, sizeof (uint32_t));//how to just set higher 20
+  table.ft[index] = (uint32_t) addr;
 }
 
-void set_use (struct frame_table *table, size_t index, bool value)
-{
-  if (value)
-    table->ft[index] |= USEDMASK;
-  else
-    table->ft[index] &= NOTUSEDMASK;
+void set_use (size_t index, bool value)
+{ 
+  bitmap_set (table.usage_map, index, value);
 }
 
 #endif
