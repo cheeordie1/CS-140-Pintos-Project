@@ -462,7 +462,7 @@ load (const char *file_name, char *cmdline, void (**eip) (void), void **esp)
   /* Set up stack. */
   if (!setup_stack (esp))
       goto done;
-  
+
   /* Push stack values */
   push_stack_args (file_name, cmdline, esp);
 
@@ -555,8 +555,16 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
       /* Get a page of memory. */
-      //uint8_t *kpage = palloc_get_page (PAL_USER);
-      uint8_t *kpage = frame_alloc (PAL_USER);
+      #ifdef VM
+        lock_acquire (&eviction_lock);
+        size_t stack_frame_idx = frame_alloc (PAL_USER);
+        // TODO Set up a supp page entry mapping kpage to an entry containing idx and other data
+        uint8_t kpage = frame_get (stack_frame_idx);
+        lock_release (&eviction_lock);      
+      #else
+        kpage = palloc_get_page (PAL_USER);
+      #endif
+
       if (kpage == NULL)
         return false;
 
@@ -564,6 +572,12 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
         {
           palloc_free_page (kpage);
+          #ifdef VM
+            lock_acquire (&eviction_lock);
+            // TODO free supp page table entry
+            frame_delete (stack_frame_idx);
+            lock_release (&eviction_lock);
+          #endif
           return false; 
         }
       memset (kpage + page_read_bytes, 0, page_zero_bytes);
@@ -572,6 +586,12 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       if (!install_page (upage, kpage, writable)) 
         {
           palloc_free_page (kpage);
+          #ifdef VM
+            lock_acquire (&eviction_lock);
+            // TODO free supp page table entry
+            frame_delete (stack_frame_idx);
+            lock_release (&eviction_lock);
+          #endif
           return false; 
         }
 
@@ -591,14 +611,32 @@ setup_stack (void **esp)
   uint8_t *kpage;
   bool success = false;
 
-  kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+  #ifdef VM
+    lock_acquire (&eviction_lock);
+    size_t stack_frame_idx = frame_alloc (PAL_USER | PAL_ZERO);
+    // TODO supplemental page table entry
+    kpage = frame_get (stack_frame_idx);
+    lock_release (&eviction_lock);   
+  #else
+    kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+  #endif
   if (kpage != NULL) 
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success)
-        *esp = PHYS_BASE;
+        {
+          *esp = PHYS_BASE;
+        }
       else
-        palloc_free_page (kpage);
+        {
+          palloc_free_page (kpage);
+          #ifdef VM
+            lock_acquire (&eviction_lock);
+            // TODO free supp page table entry
+            frame_delete (stack_frame_idk);
+            lock_release (&eviction_lock);
+          #endif
+        }
     }
   return success;
 }

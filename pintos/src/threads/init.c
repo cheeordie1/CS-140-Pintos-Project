@@ -120,6 +120,7 @@ main (void)
 
 #ifdef VM
   /* Initialize frame table. */
+  // TODO: supp_page_init ();
   frame_init (user_page_limit);
 #endif
 
