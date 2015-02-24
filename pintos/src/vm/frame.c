@@ -35,7 +35,9 @@ frame_alloc (enum palloc_flags flags)
   if (frame_entry_idx == BITMAP_ERROR)
     {
       lock_acquire (&eviction_lock); 
-      // eviction because frame table full
+      // TODO eviction because frame table full
+      PANIC ("\n\nRan out of memory to give you :*(\n\n");
+      kernel_panic ();
       lock_release (&eviction_lock);
       lock_release (&table.ft_lock);  
       return SIZE_MAX; 
