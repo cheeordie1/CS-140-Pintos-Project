@@ -37,14 +37,16 @@ frame_alloc (enum palloc_flags flags)
       lock_acquire (&eviction_lock); 
       // TODO eviction because frame table full
       PANIC ("\n\nRan out of memory to give you :*(\n\n");
-      kernel_panic ();
       lock_release (&eviction_lock);
       lock_release (&table.ft_lock);  
       return SIZE_MAX; 
     }
   kpage = palloc_get_page (flags);
   if (kpage == NULL)
-    return BITMAP_ERROR;
+    {
+      lock_release (&table.ft_lock);
+      return BITMAP_ERROR;
+    }
   lock_release (&table.ft_lock);
   table.ft[frame_entry_idx] = (uint32_t) kpage;
   return frame_entry_idx;
@@ -58,6 +60,9 @@ void
 frame_delete (size_t index)
 {
   ASSERT (bitmap_test (table.used_map, index));
+
+  uint32_t *pg = table.ft[index];
+  palloc_free_page (pg);
   bitmap_reset (table.used_map, index);
 }
 

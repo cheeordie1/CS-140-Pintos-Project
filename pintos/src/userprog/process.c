@@ -559,10 +559,10 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
         lock_acquire (&eviction_lock);
         size_t stack_frame_idx = frame_alloc (PAL_USER);
         // TODO Set up a supp page entry mapping kpage to an entry containing idx and other data
-        uint8_t kpage = frame_get (stack_frame_idx);
+        uint8_t *kpage = frame_get (stack_frame_idx);
         lock_release (&eviction_lock);      
       #else
-        kpage = palloc_get_page (PAL_USER);
+        uint8_t *kpage = palloc_get_page (PAL_USER);
       #endif
 
       if (kpage == NULL)
@@ -571,12 +571,13 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       /* Load this page. */
       if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
         {
-          palloc_free_page (kpage);
           #ifdef VM
             lock_acquire (&eviction_lock);
             // TODO free supp page table entry
             frame_delete (stack_frame_idx);
             lock_release (&eviction_lock);
+          #else
+            palloc_free_page (kpage);
           #endif
           return false; 
         }
@@ -585,12 +586,13 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       /* Add the page to the process's address space. */
       if (!install_page (upage, kpage, writable)) 
         {
-          palloc_free_page (kpage);
           #ifdef VM
             lock_acquire (&eviction_lock);
             // TODO free supp page table entry
             frame_delete (stack_frame_idx);
             lock_release (&eviction_lock);
+          #else
+            palloc_free_page (kpage);
           #endif
           return false; 
         }
