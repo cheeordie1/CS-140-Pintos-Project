@@ -31,6 +31,9 @@
 #else
 #include "tests/threads/tests.h"
 #endif
+#ifdef VM
+#include "vm/frame.h"
+#endif
 #ifdef FILESYS
 #include "devices/block.h"
 #include "devices/ide.h"
@@ -113,6 +116,12 @@ main (void)
 #ifdef USERPROG
   exception_init ();
   syscall_init ();
+#endif
+
+#ifdef VM
+  /* Initialize frame table. */
+  // TODO: supp_page_init ();
+  frame_init (user_page_limit);
 #endif
 
   /* Start thread scheduler and enable interrupts. */

@@ -1,43 +1,24 @@
+#ifndef VM_FRAME_H
+#define VM_FRAME_H
 
-#include "userprog/syscall.h"
-#include <stdio.h>
-#include <string.h>
+#include <bitmap.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
 #include "threads/malloc.h"
+#include "threads/palloc.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
-#include "devices/input.h"
-#include "devices/shutdown.h"
-#include "lib/kernel/hash.h"
-#include "userprog/pagedir.h"
-#include <bitmap.h>
 
-/*
-+---------------------+
-| Page ADDR |use bit  | top 20 bits hold pointer
-+---------------------+
-|           |         | lower 12 holds other info
-+---------------------+
-|           |         |
-+---------------------+
-|           |         |
-+---------------------+
-|           |         |
-+---------------------+
-|           |         |
-+---------------------+
-*/
+struct lock eviction_lock;
 
-void frame_table_init (size_t user_page_limit);
-bool check_use (size_t index);
-void set_use (size_t index, bool value); 
-void update_frame_entry (void *addr);
-void insert_page_addr (size_t index, void *addr);
-void delete_entry (void *addr);
+void frame_init (size_t user_page_limit);
+size_t frame_alloc (enum palloc_flags flags);
+void frame_delete (size_t index);
+uint8_t *frame_get (size_t index);
 
-
-
-  
+#endif /* vm/frame.h */
