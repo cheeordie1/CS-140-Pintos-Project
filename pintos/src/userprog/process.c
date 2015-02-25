@@ -610,36 +610,29 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 static bool
 setup_stack (void **esp) 
 {
-  uint8_t *kpage;
   bool success = false;
 
   #ifdef VM
-    lock_acquire (&eviction_lock);
-    size_t stack_frame_idx = frame_alloc (PAL_USER | PAL_ZERO);
-    // TODO supplemental page table entry
-    kpage = frame_get (stack_frame_idx);
-    lock_release (&eviction_lock);   
+    size_t stack_frame_idx;
+    struct sp_entry *spe;
+    spe = page_supp_alloc ((uint8_t *) PHYS_BASE - PGSIZE, NULL, true);
+    success = frame_obtain (spe, PAL_USER | PAL_ZERO);
+    if (success)
+      *esp = PHYS_BASE;
+    else
+      page_supp_delete ((uint8_t *) PHYS_BASE - PGSIZE);
   #else
+    uint8_t *kpage;
     kpage = palloc_get_page (PAL_USER | PAL_ZERO);
-  #endif
-  if (kpage != NULL) 
-    {
-      success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
-      if (success)
-        {
+    if (kpage != NULL) 
+      {
+        success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
+        if (success)
           *esp = PHYS_BASE;
-        }
-      else
-        {
+        else
           palloc_free_page (kpage);
-          #ifdef VM
-            lock_acquire (&eviction_lock);
-            // TODO free supp page table entry
-            frame_delete (stack_frame_idk);
-            lock_release (&eviction_lock);
-          #endif
-        }
-    }
+      }
+  #endif
   return success;
 }
 
@@ -693,22 +686,22 @@ parse_cmd_ln (char *cmdline, void **esp)
   return count;
 }
 
-/* Adds a mapping from user virtual address UPAGE to kernel
-   virtual address KPAGE to the page table.
-   If WRITABLE is true, the user process may modify the page;
+/* adds a mapping from user virtual address upage to kernel
+   virtual address kpage to the page table.
+   if writable is true, the user process may modify the page;
    otherwise, it is read-only.
-   UPAGE must not already be mapped.
-   KPAGE should probably be a page obtained from the user pool
+   upage must not already be mapped.
+   kpage should probably be a page obtained from the user pool
    with palloc_get_page().
-   Returns true on success, false if UPAGE is already mapped or
+   returns true on success, false if upage is already mapped or
    if memory allocation fails. */
 static bool
 install_page (void *upage, void *kpage, bool writable)
 {
   struct thread *t = thread_current ();
 
-  /* Verify that there's not already a page at that virtual
+  /* verify that there's not already a page at that virtual
      address, then map our page there. */
-  return (pagedir_get_page (t->pagedir, upage) == NULL
+  return (pagedir_get_page (t->pagedir, upage) == null
           && pagedir_set_page (t->pagedir, upage, kpage, writable));
 }

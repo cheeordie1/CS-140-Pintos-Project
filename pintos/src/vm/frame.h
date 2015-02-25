@@ -11,13 +11,14 @@
 #include "threads/palloc.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
+#include "vm/page.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
 
 struct lock eviction_lock;
 
 void frame_init (size_t user_page_limit);
-size_t frame_alloc (enum palloc_flags flags);
+size_t frame_obtain (struct sp_entry *spe);
 void frame_delete (size_t index);
 uint8_t *frame_get (size_t index);
 
