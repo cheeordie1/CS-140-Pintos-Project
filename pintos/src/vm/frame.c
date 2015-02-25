@@ -4,9 +4,9 @@
 
 static struct frame_table
   {
-    struct lock ft_lock;        /* Lock the frame table before access. */
-    uint32_t *ft;               /* Pointer to the static array of ft entries. */
-    struct bitmap *used_map;    /* Keep track of free slots for allocation. */
+    struct lock ft_lock;     /* Lock the frame table before access. */
+    uint32_t *ft;            /* Pointer to the static array of ft entries. */
+    struct bitmap *used_map; /* Keep track of free slots for allocation. */
   } table;
 
 static struct frame_table table;
@@ -18,7 +18,7 @@ frame_init (size_t user_page_limit)
   lock_init (&eviction_lock);
   lock_init (&table.ft_lock);
   table.ft = (uint32_t *) calloc (user_page_limit, sizeof (uint32_t));
-  used_map = bitmap_create (user_page_limit);
+  table.used_map = bitmap_create (user_page_limit);
 }
 
 /* Get a page frame for a user page. Evict if no pages left.
@@ -61,21 +61,21 @@ frame_delete (size_t index)
 {
   ASSERT (bitmap_test (table.used_map, index));
 
-  uint32_t *pg = table.ft[index];
+  uint32_t *pg = (uint32_t *) table.ft[index];
   palloc_free_page (pg);
   bitmap_reset (table.used_map, index);
 }
 
 /* Retrieve a frame given an index. */
-uint8_t *
+uint32_t *
 frame_get (size_t index)
 {
-  uint8_t *ret_frame;
+  uint32_t *ret_frame;
   lock_acquire (&table.ft_lock);
   if (!bitmap_test (table.used_map, index) || 
       index == BITMAP_ERROR)
     return NULL;
-  ret_frame = table.ft[index] 
+  ret_frame = (uint32_t *) table.ft[index];
   lock_release (&table.ft_lock);
   return ret_frame;
 }

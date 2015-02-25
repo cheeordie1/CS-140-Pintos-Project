@@ -635,7 +635,7 @@ setup_stack (void **esp)
           #ifdef VM
             lock_acquire (&eviction_lock);
             // TODO free supp page table entry
-            frame_delete (stack_frame_idk);
+            frame_delete (stack_frame_idx);
             lock_release (&eviction_lock);
           #endif
         }
