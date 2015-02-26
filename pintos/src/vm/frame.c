@@ -1,6 +1,7 @@
 #include "vm/frame.h"
 #include <bitmap.h>
 #include <debug.h>
+#include <string.h>
 
 static struct frame_table
   {
@@ -11,8 +12,8 @@ static struct frame_table
 
 static struct frame_table table;
 
-static size_t frame_evict ();
-static bool frame_fetch (uint8_t *kpage, struct sp_entry *spe);
+static size_t frame_evict (void);
+static bool frame_fetch (struct sp_entry *spe);
 static bool frame_install_page (struct sp_entry *spe);
 
 /* Allocates frame table memory. */
@@ -38,7 +39,7 @@ frame_obtain (struct sp_entry *spe)
       spe->idx = frame_evict ();
       PANIC ("\n\nRan out of memory to give you :*(\n\n");
     }
-  if (!frame_fetch ((uint8_t *) table.ft[spe->idx] ,spe))
+  if (!frame_fetch (spe))
     success = false;
   else if (!frame_install_page (spe))
     {
@@ -95,23 +96,48 @@ frame_evict ()
 
 /* Fetches the page referred to by spe into kpage. */
 static bool
-frame_fetch (uint8_t *kpage, struct sp_entry *spe)
+frame_fetch (struct sp_entry *spe)
 {
+  uint8_t *kpage;
   switch (spe->location)
     {
       case UNMAPPED:
         kpage = palloc_get_page (PAL_USER | PAL_ZERO);
         if (kpage == NULL)
           return false;
-        table.ft[spe->idx] = (uint32_t) kpage;
         break;
       //TODO case FS, case SWAP
       case SWAPPED:
         break;
       case FILESYSTEM:
+        file_seek (spe->fp, spe->ofs * PGSIZE);
+        if (spe->read_bytes == PGSIZE) 
+          {
+            kpage = palloc_get_page (PAL_USER);
+            if (kpage == NULL) 
+              return false;
+            if ((size_t) file_read (spe->fp, kpage, spe->read_bytes) < spe->read_bytes)
+              thread_exit ();
+          } 
+        else if (spe->zero_bytes == PGSIZE)
+          {
+            kpage = palloc_get_page (PAL_ZERO);
+            if (kpage == NULL) 
+              return false;
+          }
+        else 
+          {
+            kpage = palloc_get_page (PAL_USER);
+            if (kpage == NULL) 
+             return false;
+            if ((size_t) file_read (spe->fp, kpage, spe->read_bytes) < spe->read_bytes)
+             thread_exit ();
+            memset (kpage + spe->read_bytes, 0, spe->zero_bytes);
+          }
         break;
       default: NOT_REACHED ();
     }
+  table.ft[spe->idx] = (uint32_t) kpage;    
   return true;
 }
 

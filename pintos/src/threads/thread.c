@@ -765,6 +765,12 @@ init_thread (struct thread *t, const char *name, int priority)
 
 #endif
 
+#ifdef VM
+
+  list_init (&spe_list);
+
+#endif
+
   /*initialize the stack of acquired locks*/  
   list_init (&t->acquired_locks);
   t->waiting_for_tlock = NULL;

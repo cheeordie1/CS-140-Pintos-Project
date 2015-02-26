@@ -28,11 +28,12 @@ struct sp_entry *
 page_supp_alloc (struct thread *t, uint8_t *upage)
 {
   struct sp_entry *spe = malloc (sizeof (struct sp_entry));
-  spe->fd = -1;
+  spe->fp = NULL;
   spe->idx = SIZE_MAX;
   spe->location = UNMAPPED;
   spe->read_bytes = 0;
   spe->zero_bytes = 0;
+  spe->ofs = 0;
   spe->writable = true;
   spe->upage = upage;
   spe->t = t;
@@ -44,18 +45,38 @@ page_supp_alloc (struct thread *t, uint8_t *upage)
 }
 
 void
+page_supp_destroy (struct thread *t)
+{
+  while (!list_empty (&t->spe_list)) 
+  {
+    struct sp_entry *spe = list_entry (list_pop_front (&t->spe_list), 
+                                       struct sp_entry, l_elem);
+    page_supp_delete (spe);
+  }
+}
+
+
+void
 page_supp_delete (struct sp_entry *spe)
 {
+  list_remove (&spe->l_elem);
+  lock_acquire (&sp_table.pt_lock); 
   hash_delete (&sp_table.pt_hash, &spe->h_elem);
+  lock_release (&sp_table.pt_lock); 
   switch (spe->location)
     {
-      // TODO Implement deletion of pages through supp page table
-      case UNMAPPED:
       case FRAMED:
+        frame_delete (spe);
+        break;
       case FILESYSTEM:
+        file_close (spe->fp);
+        break;
       case SWAPPED:
+        // TODO: implement SWAPPED case
+        break;
       break;
-      default: NOT_REACHED ();
+      default:
+        break;
     }
   free (spe);
 }

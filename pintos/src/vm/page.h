@@ -28,11 +28,12 @@ enum cache_flag
 
 struct sp_entry
   {
-    int fd;                    /* Location in file. */ 
+    struct file *fp;           /* Location in file. */ 
     size_t idx;                /* Index into frame table. */
     enum cache_flag location;  /* Location flag FS, Frame, or Swap. */
     size_t read_bytes;         /* Number of bytes to read. */
     size_t zero_bytes;         /* Number of bytes to zero. */
+    size_t ofs;                /* Offset into file. */
     bool writable;             /* Whether page is writable. */
     uint8_t *upage;            /* Virtual address of page. */
     struct thread *t;          /* Owner of the page. */

@@ -33,6 +33,8 @@
 #endif
 #ifdef VM
 #include "vm/frame.h"
+#include "vm/page.h"
+#include "vm/swap.h"
 #endif
 #ifdef FILESYS
 #include "devices/block.h"
@@ -119,9 +121,10 @@ main (void)
 #endif
 
 #ifdef VM
-  /* Initialize frame table. */
-  // TODO: supp_page_init ();
+  /* Initialize virtual memory paging. */
   frame_init (user_page_limit);
+  page_supp_init ();
+  swap_init ();
 #endif
 
   /* Start thread scheduler and enable interrupts. */
@@ -282,7 +285,6 @@ parse_options (char **argv)
      for reproducibility.  To fix this, give the "-r" option to
      the pintos script to request real-time execution. */
   random_init (rtc_get_time ());
-  printf("\n\n\n\n\n\t\t\n\nHello %d\n\n\n\n",user_page_limit); 
   return argv;
 }
 
