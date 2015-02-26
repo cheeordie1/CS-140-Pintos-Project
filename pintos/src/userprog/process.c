@@ -545,6 +545,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
 
+  struct thread *t = thread_current ();
   file_seek (file, ofs);
   while (read_bytes > 0 || zero_bytes > 0) 
     {
@@ -556,11 +557,14 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 
       /* Get a page of memory. */
       #ifdef VM
-        struct sp_entry *spe = page_supp_alloc (upage);
-        uint8_t *kpage = frame_get (stack_frame_idx);
+        struct sp_entry *spe = page_supp_alloc (t,upage);
+        spe->read_bytes = page_read_bytes;
+        spe->zero_bytes = page_zero_bytes;
+        spe->writable = writable;
+        spe->location = FILESYSTEM;
+        spe->upage = upage;
       #else
         uint8_t *kpage = palloc_get_page (PAL_USER);
-      #endif
 
       if (kpage == NULL)
         return false;
@@ -568,14 +572,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       /* Load this page. */
       if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
         {
-          #ifdef VM
-            lock_acquire (&eviction_lock);
-            // TODO free supp page table entry
-            frame_delete (stack_frame_idx);
-            lock_release (&eviction_lock);
-          #else
-            palloc_free_page (kpage);
-          #endif
+          palloc_free_page (kpage);
           return false; 
         }
       memset (kpage + page_read_bytes, 0, page_zero_bytes);
@@ -583,17 +580,10 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       /* Add the page to the process's address space. */
       if (!install_page (upage, kpage, writable)) 
         {
-          #ifdef VM
-            lock_acquire (&eviction_lock);
-            // TODO free supp page table entry
-            frame_delete (stack_frame_idx);
-            lock_release (&eviction_lock);
-          #else
-            palloc_free_page (kpage);
-          #endif
+          palloc_free_page (kpage);
           return false; 
         }
-
+      #endif
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
@@ -610,12 +600,11 @@ setup_stack (void **esp)
   bool success = false;
 
   #ifdef VM
-    size_t stack_frame_idx;
     struct sp_entry *spe;
     spe = page_supp_alloc (thread_current (), (uint8_t *) PHYS_BASE - PGSIZE);
     spe->writable = true;
     spe->location = UNMAPPED;
-    success = frame_obtain (spe, PAL_USER | PAL_ZERO);
+    success = frame_obtain (spe);
     if (success)
       *esp = PHYS_BASE;
     else
@@ -701,6 +690,7 @@ install_page (void *upage, void *kpage, bool writable)
 
   /* verify that there's not already a page at that virtual
      address, then map our page there. */
-  return (pagedir_get_page (t->pagedir, upage) == null
+  return (pagedir_get_page (t->pagedir, upage) == NULL
+  /*fdsakfdsafdjksal;wefsdakfgdjsa*/
           && pagedir_set_page (t->pagedir, upage, kpage, writable));
 }

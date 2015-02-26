@@ -7,6 +7,7 @@
 #include <stdint.h>
 #include <syscall-nr.h>
 #include <hash.h>
+#include <list.h>
 #include "threads/synch.h"
 #include "threads/interrupt.h"
 #include "threads/malloc.h"
@@ -31,15 +32,16 @@ struct sp_entry
     size_t idx;                /* Index into frame table. */
     enum cache_flag location;  /* Location flag FS, Frame, or Swap. */
     size_t read_bytes;         /* Number of bytes to read. */
-    size_t zero_bytesl         /* Number of bytes to zero. */
+    size_t zero_bytes;         /* Number of bytes to zero. */
     bool writable;             /* Whether page is writable. */
     uint8_t *upage;            /* Virtual address of page. */
     struct thread *t;          /* Owner of the page. */
-    struct hash_elem elem;     /* Element of list of sp_entries. */
+    struct hash_elem h_elem;   /* Element of hash of sp_entries. */
+    struct list_elem l_elem;   /* Element of list of sp_entries. */
   };
 
 void page_table_init (void);
-struct sp_entry *page_supp_insert (struct sp_entry *spe_temp);
+struct sp_entry *page_supp_alloc (struct thread *t, uint8_t *upage);
 void page_supp_delete (struct sp_entry *spe_temp);
 
 #endif /* vm/page.h */

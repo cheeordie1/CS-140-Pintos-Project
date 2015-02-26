@@ -27,34 +27,37 @@ page_table_init ()
 struct sp_entry *
 page_supp_alloc (struct thread *t, uint8_t *upage)
 {
-  struct spt_entry *spe = malloc (sizeof (struct spt_entry));
+  struct sp_entry *spe = malloc (sizeof (struct sp_entry));
   spe->fd = -1;
   spe->idx = SIZE_MAX;
   spe->location = UNMAPPED;
-  spe->bytes = 0;
+  spe->read_bytes = 0;
+  spe->zero_bytes = 0;
   spe->writable = true;
   spe->upage = upage;
   spe->t = t;
   lock_acquire (&sp_table.pt_lock);
-  hash_insert (&sp_table.pt_hash, &spe->elem);
+  hash_insert (&sp_table.pt_hash, &spe->h_elem);
+  list_push_back (&t->spe_list, &spe->l_elem);
   lock_release (&sp_table.pt_lock); 
+  return spe;
 }
 
 void
 page_supp_delete (struct sp_entry *spe)
 {
-  hash_delete (&sp_table.pt_hash, &spe->elem);
+  hash_delete (&sp_table.pt_hash, &spe->h_elem);
   switch (spe->location)
     {
       // TODO Implement deletion of pages through supp page table
       case UNMAPPED:
       case FRAMED:
       case FILESYSTEM:
-      case SWAP:
-      break
-      default: NOT_USED ();
+      case SWAPPED:
+      break;
+      default: NOT_REACHED ();
     }
-  delete (spe);
+  free (spe);
 }
 
 /* Hash function to insert elements into 
@@ -62,8 +65,8 @@ page_supp_delete (struct sp_entry *spe)
 static unsigned
 page_hash (const struct hash_elem *e, void *aux UNUSED)
 {
-  struct spt_entry *spte = hash_entry (e, struct spt_entry, elem);
-  return  hash_int ((uint32_t) frame_get (spte->ft_idx));
+  struct sp_entry *spe = hash_entry (e, struct sp_entry, h_elem);
+  return  hash_int ((uint32_t) frame_get (spe->idx));
 }
 
 /* Comparison function to search supplementary 
@@ -75,7 +78,7 @@ page_cmp (const struct hash_elem *a,
           const struct hash_elem *b,
           void *aux UNUSED)
 {
-  struct spt_entry *spe_a = hash_entry (a, struct sp_entry, elem);
-  struct spt_entry *spe_b = hash_entry (b, struct sp_entry, elem);
+  struct sp_entry *spe_a = hash_entry (a, struct sp_entry, h_elem);
+  struct sp_entry *spe_b = hash_entry (b, struct sp_entry, h_elem);
 	  return spe_a->upage < spe_b->upage && spe_a->t->tid != spe_b->t->tid;
 }

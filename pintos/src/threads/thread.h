@@ -148,6 +148,9 @@ struct thread
 
 #endif
 
+#ifdef VM
+    struct list spe_list;               /* list of spt entries used by this thread */
+#endif
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
   };
