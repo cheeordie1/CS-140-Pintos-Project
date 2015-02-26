@@ -556,11 +556,8 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 
       /* Get a page of memory. */
       #ifdef VM
-        lock_acquire (&eviction_lock);
-        size_t stack_frame_idx = frame_alloc (PAL_USER);
-        // TODO Set up a supp page entry mapping kpage to an entry containing idx and other data
+        struct sp_entry *spe = page_supp_alloc (upage);
         uint8_t *kpage = frame_get (stack_frame_idx);
-        lock_release (&eviction_lock);      
       #else
         uint8_t *kpage = palloc_get_page (PAL_USER);
       #endif
@@ -615,12 +612,14 @@ setup_stack (void **esp)
   #ifdef VM
     size_t stack_frame_idx;
     struct sp_entry *spe;
-    spe = page_supp_alloc ((uint8_t *) PHYS_BASE - PGSIZE, NULL, true);
+    spe = page_supp_alloc (thread_current (), (uint8_t *) PHYS_BASE - PGSIZE);
+    spe->writable = true;
+    spe->location = UNMAPPED;
     success = frame_obtain (spe, PAL_USER | PAL_ZERO);
     if (success)
       *esp = PHYS_BASE;
     else
-      page_supp_delete ((uint8_t *) PHYS_BASE - PGSIZE);
+      page_supp_delete (spe);
   #else
     uint8_t *kpage;
     kpage = palloc_get_page (PAL_USER | PAL_ZERO);
