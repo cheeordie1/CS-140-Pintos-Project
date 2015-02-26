@@ -5,7 +5,7 @@
 static struct frame_table
   {
     struct lock ft_lock;        /* Lock the frame table before access. */
-    uint8_t *ft;               /* Pointer to the static array of ft entries. */
+    uint32_t *ft;               /* Pointer to the static array of ft entries. */
     struct bitmap *used_map;    /* Keep track of free slots for allocation. */
   } table;
 
@@ -21,8 +21,8 @@ frame_init (size_t user_page_limit)
 {
   lock_init (&eviction_lock);
   lock_init (&table.ft_lock);
-  table.ft = (uint8_t *) calloc (user_page_limit, sizeof (uint8_t *));
-  used_map = bitmap_create (user_page_limit);
+  table.ft = (uint32_t *) calloc (user_page_limit, sizeof (uint8_t *));
+  table.used_map = bitmap_create (user_page_limit);
 }
 
 /* Obtain a frame for the page referred to by spe.
@@ -42,7 +42,7 @@ frame_obtain (struct sp_entry *spe)
     success = false;
   else if (!frame_install_page (spe))
     {
-      palloc_free_page (table.ft[spe->idx]);
+      palloc_free_page ((uint8_t *) table.ft[spe->idx]);
       success = false;
     }
   if (!success)
@@ -65,11 +65,12 @@ frame_obtain (struct sp_entry *spe)
 void
 frame_delete (struct sp_entry *spe)
 {
+  // TODO fix frame delete
   if (spe->idx == BITMAP_ERROR)
     return;
   ASSERT (bitmap_test (table.used_map, spe->idx));
   pagedir_clear_page (spe->t->pagedir, spe->upage);
-  uint8_t *pg = table.ft[spe->idx];
+  uint8_t *pg = (uint8_t *) table.ft[spe->idx];
   palloc_free_page (pg);
   bitmap_reset (table.used_map, spe->idx);
 }
@@ -82,7 +83,7 @@ frame_get (size_t index)
   if (!bitmap_test (table.used_map, index) || 
       index == BITMAP_ERROR)
     return NULL;
-  ret_frame = table.ft[index] 
+  ret_frame = (uint8_t *) table.ft[index] 
   return ret_frame;
 }
 
@@ -90,6 +91,7 @@ frame_get (size_t index)
 static size_t
 frame_evict ()
 {
+  // TODO implement eviction
   return SIZE_MAX;
 }
 
@@ -128,7 +130,8 @@ frame_install_page (struct sp_entry *spe)
 {
   /* verify that there's not already a page at that virtual
      address, then map our page there. */
-  return (pagedir_get_page (spe->t->pagedir, spe->upage) == NULL
-          && pagedir_set_page (spe->t->pagedir, spe->upage,
-                               table.ft[spe->idx], spe->writable));
+  return (pagedir_get_page (spe->t->pagedir, spe->upage) == NULL &&
+          pagedir_set_page (spe->t->pagedir, spe->upage,
+                            (uint8_t *) table.ft[spe->idx],
+                            spe->writable));
 }
