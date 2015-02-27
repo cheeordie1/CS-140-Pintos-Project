@@ -477,7 +477,9 @@ load (const char *file_name, char *cmdline, void (**eip) (void), void **esp)
   return success;
 }
 
+#ifndef VM
 static bool install_page (void *upage, void *kpage, bool writable);
+#endif
 
 /* Checks whether PHDR describes a valid, loadable segment in
    FILE and returns true if so, false otherwise. */
@@ -679,6 +681,7 @@ parse_cmd_ln (char *cmdline, void **esp)
   return count;
 }
 
+#ifndef VM
 /* adds a mapping from user virtual address upage to kernel
    virtual address kpage to the page table.
    if writable is true, the user process may modify the page;
@@ -698,3 +701,4 @@ install_page (void *upage, void *kpage, bool writable)
   return (pagedir_get_page (t->pagedir, upage) == NULL
           && pagedir_set_page (t->pagedir, upage, kpage, writable));
 }
+#endif

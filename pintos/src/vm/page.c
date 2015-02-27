@@ -1,5 +1,6 @@
 #include "vm/page.h"
 #include "vm/frame.h"
+#include "vm/swap.h"
 
 struct page_table 
   {
@@ -30,6 +31,7 @@ page_supp_alloc (struct thread *t, uint8_t *upage)
   struct sp_entry *spe = malloc (sizeof (struct sp_entry));
   spe->fp = NULL;
   spe->idx = SIZE_MAX;
+  spe->sector = SIZE_MAX;
   spe->location = UNMAPPED;
   spe->read_bytes = 0;
   spe->zero_bytes = 0;
@@ -44,6 +46,8 @@ page_supp_alloc (struct thread *t, uint8_t *upage)
   return spe;
 }
 
+/* Delete all entries in the supplementary
+   page table. */
 void
 page_supp_destroy (struct thread *t)
 {
@@ -55,7 +59,7 @@ page_supp_destroy (struct thread *t)
   }
 }
 
-
+/* Delete supplementary page entry. */
 void
 page_supp_delete (struct sp_entry *spe)
 {
@@ -72,10 +76,10 @@ page_supp_delete (struct sp_entry *spe)
         file_close (spe->fp);
         break;
       case SWAPPED:
-        // TODO: implement SWAPPED case
+        swap_delete (spe);
         break;
-      break;
       default:
+        barrier ();
         break;
     }
   free (spe);

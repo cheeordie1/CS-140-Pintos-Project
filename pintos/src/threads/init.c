@@ -123,7 +123,7 @@ main (void)
 #ifdef VM
   /* Initialize virtual memory paging. */
   frame_init (user_page_limit);
-  page_supp_init ();
+  page_table_init ();
   swap_init ();
 #endif
 

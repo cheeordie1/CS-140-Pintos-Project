@@ -767,7 +767,7 @@ init_thread (struct thread *t, const char *name, int priority)
 
 #ifdef VM
 
-  list_init (&spe_list);
+  list_init (&t->spe_list);
 
 #endif
 

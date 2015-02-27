@@ -2,13 +2,14 @@
 #include <bitmap.h>
 #include <debug.h>
 #include <string.h>
+#include "vm/swap.h" 
 
-static struct frame_table
+struct frame_table
   {
     struct lock ft_lock;        /* Lock the frame table before access. */
     uint32_t *ft;               /* Pointer to the static array of ft entries. */
     struct bitmap *used_map;    /* Keep track of free slots for allocation. */
-  } table;
+  };
 
 static struct frame_table table;
 
@@ -106,8 +107,9 @@ frame_fetch (struct sp_entry *spe)
         if (kpage == NULL)
           return false;
         break;
-      //TODO case FS, case SWAP
       case SWAPPED:
+        kpage = palloc_get_page (PAL_USER);
+        swap_read (spe);
         break;
       case FILESYSTEM:
         file_seek (spe->fp, spe->ofs * PGSIZE);
@@ -129,15 +131,16 @@ frame_fetch (struct sp_entry *spe)
           {
             kpage = palloc_get_page (PAL_USER);
             if (kpage == NULL) 
-             return false;
+              return false;
             if ((size_t) file_read (spe->fp, kpage, spe->read_bytes) < spe->read_bytes)
-             thread_exit ();
+              thread_exit ();
             memset (kpage + spe->read_bytes, 0, spe->zero_bytes);
           }
         break;
       default: NOT_REACHED ();
     }
-  table.ft[spe->idx] = (uint32_t) kpage;    
+  table.ft[spe->idx] = (uint32_t) kpage;
+  spe->location = FRAMED;
   return true;
 }
 
