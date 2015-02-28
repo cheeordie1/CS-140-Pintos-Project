@@ -1,5 +1,6 @@
 #include "vm/page.h"
 #include "vm/frame.h"
+#include "vm/swap.h"
 
 struct page_table 
   {
@@ -28,11 +29,13 @@ struct sp_entry *
 page_supp_alloc (struct thread *t, uint8_t *upage)
 {
   struct sp_entry *spe = malloc (sizeof (struct sp_entry));
-  spe->fd = -1;
+  spe->fp = NULL;
   spe->idx = SIZE_MAX;
+  spe->sector = SIZE_MAX;
   spe->location = UNMAPPED;
   spe->read_bytes = 0;
   spe->zero_bytes = 0;
+  spe->ofs = 0;
   spe->writable = true;
   spe->upage = upage;
   spe->t = t;
@@ -43,20 +46,42 @@ page_supp_alloc (struct thread *t, uint8_t *upage)
   return spe;
 }
 
+/* Delete all entries in the supplementary
+   page table. */
+void
+page_supp_destroy (struct thread *t)
+{
+  while (!list_empty (&t->spe_list)) 
+  {
+    lock_acquire (&sp_table.pt_lock); 
+    struct sp_entry *spe = list_entry (list_pop_front (&t->spe_list), 
+                                       struct sp_entry, l_elem);
+    hash_delete (&sp_table.pt_hash, &spe->h_elem);
+    lock_release (&sp_table.pt_lock); 
+    page_supp_delete (spe);
+  }
+}
+
+/* Delete supplementary page entry. */
 void
 page_supp_delete (struct sp_entry *spe)
 {
-  list_remove (&spe->l_elem);
-  hash_delete (&sp_table.pt_hash, &spe->h_elem);
   switch (spe->location)
     {
-      // TODO Implement deletion of pages through supp page table
-      case UNMAPPED:
       case FRAMED:
-      case FILESYSTEM:
-      case SWAPPED:
+        frame_delete (spe);
         break;
-      default: NOT_REACHED ();
+      case FILESYSTEM:
+        lock_acquire (&fs_lock);
+        file_close (spe->fp);
+        lock_release (&fs_lock);
+        break;
+      case SWAPPED:
+        swap_delete (spe);
+        break;
+      default:
+        barrier ();
+        break;
     }
   free (spe);
 }

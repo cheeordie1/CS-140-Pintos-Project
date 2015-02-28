@@ -258,6 +258,7 @@ process_exit (void)
       cur->pagedir = NULL;
       pagedir_activate (NULL);
       pagedir_destroy (pd);
+      page_supp_destroy (cur);
     }
 }
 
@@ -476,7 +477,9 @@ load (const char *file_name, char *cmdline, void (**eip) (void), void **esp)
   return success;
 }
 
+#ifndef VM
 static bool install_page (void *upage, void *kpage, bool writable);
+#endif
 
 /* Checks whether PHDR describes a valid, loadable segment in
    FILE and returns true if so, false otherwise. */
@@ -546,6 +549,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT (ofs % PGSIZE == 0);
 
   struct thread *t = thread_current ();
+  size_t page_no = 0;
   file_seek (file, ofs);
   while (read_bytes > 0 || zero_bytes > 0) 
     {
@@ -560,11 +564,17 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
         struct sp_entry *spe = page_supp_alloc (t, upage);
         spe->read_bytes = page_read_bytes;
         spe->zero_bytes = page_zero_bytes;
+        spe->ofs = page_no * PGSIZE;
         spe->writable = writable;
+        spe->fp = file;
         spe->location = FILESYSTEM;
         spe->upage = upage;
       #else
         uint8_t *kpage = palloc_get_page (PAL_USER);
+<<<<<<< HEAD
+=======
+
+>>>>>>> fdc4be26435c462c12c1e668014ad954a5f8ad41
         if (kpage == NULL)
           return false;
 
@@ -587,6 +597,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
       upage += PGSIZE;
+      page_no++;
     }
   return true;
 }
@@ -673,6 +684,7 @@ parse_cmd_ln (char *cmdline, void **esp)
   return count;
 }
 
+#ifndef VM
 /* adds a mapping from user virtual address upage to kernel
    virtual address kpage to the page table.
    if writable is true, the user process may modify the page;
@@ -692,3 +704,4 @@ install_page (void *upage, void *kpage, bool writable)
   return (pagedir_get_page (t->pagedir, upage) == NULL
           && pagedir_set_page (t->pagedir, upage, kpage, writable));
 }
+#endif

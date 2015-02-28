@@ -28,14 +28,16 @@ enum cache_flag
 
 struct sp_entry
   {
-    int fd;                    /* Location in file. */ 
+    struct file *fp;           /* Location in file. */ 
     size_t idx;                /* Index into frame table. */
     enum cache_flag location;  /* Location flag FS, Frame, or Swap. */
     size_t read_bytes;         /* Number of bytes to read. */
     size_t zero_bytes;         /* Number of bytes to zero. */
+    size_t ofs;                /* Offset into file. */
     bool writable;             /* Whether page is writable. */
     uint8_t *upage;            /* Virtual address of page. */
     struct thread *t;          /* Owner of the page. */
+    size_t sector;             /* Beginning of swap sector */
     struct hash_elem h_elem;   /* Element of hash of sp_entries. */
     struct list_elem l_elem;   /* Element of list of sp_entries. */
   };
@@ -43,5 +45,6 @@ struct sp_entry
 void page_supp_init (void);
 struct sp_entry *page_supp_alloc (struct thread *t, uint8_t *upage);
 void page_supp_delete (struct sp_entry *spe_temp);
+void page_supp_destroy (struct thread *t);
 
 #endif /* vm/page.h */
