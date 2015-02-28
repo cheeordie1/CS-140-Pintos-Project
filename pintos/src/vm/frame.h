@@ -18,9 +18,15 @@
 
 struct lock eviction_lock;
 
+struct ft_entry 
+  {
+    uint32_t p_addr;
+    struct sp_entry *user;
+  };
+
 void frame_init (size_t user_page_limit);
 bool frame_obtain (struct sp_entry *spe);
 void frame_delete (struct sp_entry *spe);
-uint8_t *frame_get (size_t index);
+struct ft_entry *frame_get (struct sp_entry *spe);
 
 #endif /* vm/frame.h */

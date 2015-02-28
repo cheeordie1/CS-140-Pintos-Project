@@ -38,7 +38,7 @@ swap_obtain (struct sp_entry *spe)
 void 
 swap_write (struct sp_entry *spe)
 {
-  uint8_t *kpage = frame_get (spe->idx);
+  uint8_t *kpage = (uint8_t *) frame_get (spe)->p_addr;
   int cur;
   for (cur = 0; cur < SECTORS_IN_PAGE; cur++)
     block_write (swap_table.swap_block, spe->sector + cur, 
@@ -49,7 +49,7 @@ swap_write (struct sp_entry *spe)
 void
 swap_read (struct sp_entry *spe)
 {
-  uint8_t *kpage = frame_get (spe->idx);
+  uint8_t *kpage = (uint8_t *) frame_get (spe)->p_addr;
   int cur;
   for (cur = 0; SECTORS_IN_PAGE; cur++)
     block_read (swap_table.swap_block,  spe->sector + cur,
@@ -66,7 +66,3 @@ swap_delete (struct sp_entry *spe)
   spe->sector = SIZE_MAX;
   lock_release (&swap_table.swap_lock);
 }
-
-
-
-

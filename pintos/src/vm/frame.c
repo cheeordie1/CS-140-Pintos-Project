@@ -7,7 +7,7 @@
 struct frame_table
   {
     struct lock ft_lock;        /* Lock the frame table before access. */
-    uint32_t *ft;               /* Pointer to the static array of ft entries. */
+    struct ft_entry *ft;        /* Pointer to the static array of ft entries. */
     struct bitmap *used_map;    /* Keep track of free slots for allocation. */
   };
 
@@ -23,7 +23,8 @@ frame_init (size_t user_page_limit)
 {
   lock_init (&eviction_lock);
   lock_init (&table.ft_lock);
-  table.ft = (uint32_t *) calloc (user_page_limit, sizeof (uint8_t *));
+  table.ft = (struct ft_entry *) calloc (user_page_limit, 
+                                         sizeof (struct ft_entry));
   table.used_map = bitmap_create (user_page_limit);
 }
 
@@ -33,18 +34,24 @@ bool
 frame_obtain (struct sp_entry *spe)
 {
   bool success = true;
+  struct ft_entry *fte = frame_get (spe);
+  // TODO acquire shared allocator lock
   lock_acquire (&table.ft_lock);
   spe->idx = bitmap_scan_and_flip (table.used_map, 0, 1, 0);
   if (spe->idx == BITMAP_ERROR)
     {
+      // TODO release shared allocator lock
+      // TODO acquire exclusive evictor lock
       spe->idx = frame_evict ();
+      // TODO release exclusive evictor lock
+      // acquire shared allocator lock
       PANIC ("\n\nRan out of memory to give you :*(\n\n");
     }
-  if (!frame_fetch (spe))
+  if (!frame_install_page (spe))
     success = false;
-  else if (!frame_install_page (spe))
+  else if (!frame_fetch (spe))
     {
-      palloc_free_page ((uint8_t *)table.ft[spe->idx]);
+      pagedir_clear_page (spe->t->pagedir, spe->upage);
       success = false;
     }
   if (!success)
@@ -55,8 +62,10 @@ frame_obtain (struct sp_entry *spe)
   else
     {
       spe->location = FRAMED;
+      fte->user = spe;
     } 
   lock_release (&table.ft_lock);
+  // TODO release shared allocator lock
   return success; 
 }
 
@@ -69,22 +78,24 @@ frame_delete (struct sp_entry *spe)
 {
   if (spe->idx == BITMAP_ERROR)
     return;
+  // TODO acquire shared allocator lock
   ASSERT (bitmap_test (table.used_map, spe->idx));
   pagedir_clear_page (spe->t->pagedir, spe->upage);
-  uint8_t *pg = (uint8_t *) table.ft[spe->idx];
+  struct ft_entry *fte = frame_get (spe);
+  uint8_t *pg = (uint8_t *) fte->p_addr;
   palloc_free_page (pg);
   bitmap_reset (table.used_map, spe->idx);
+  // TODO release shared allocator lock
 }
 
 /* Retrieve a frame given an index. */
-uint8_t *
-frame_get (size_t index)
+struct ft_entry *
+frame_get (struct sp_entry *spe)
 {
-  uint8_t *ret_frame;
-  if (!bitmap_test (table.used_map, index) || 
-      index == BITMAP_ERROR)
-    return NULL;
-  ret_frame = (uint8_t *) table.ft[index]; 
+  struct ft_entry *ret_frame;
+  ASSERT (!bitmap_test (table.used_map, spe->idx) || 
+          spe->idx == BITMAP_ERROR);
+  ret_frame = &table.ft[spe->idx]; 
   return ret_frame;
 }
 
@@ -92,6 +103,8 @@ frame_get (size_t index)
 static size_t
 frame_evict ()
 {
+  /* stack information is read to swap slot*/
+  /* executables and code segments are read to disk*/
   return SIZE_MAX;
 }
 
@@ -110,6 +123,7 @@ frame_fetch (struct sp_entry *spe)
       case SWAPPED:
         kpage = palloc_get_page (PAL_USER);
         swap_read (spe);
+        swap_delete (spe);
         break;
       case FILESYSTEM:
         file_seek (spe->fp, spe->ofs * PGSIZE);
@@ -139,8 +153,7 @@ frame_fetch (struct sp_entry *spe)
         break;
       default: NOT_REACHED ();
     }
-  table.ft[spe->idx] = (uint32_t) kpage;
-  spe->location = FRAMED;
+  table.ft[spe->idx].p_addr = (uint32_t) kpage;
   return true;
 }
 
@@ -158,5 +171,6 @@ frame_install_page (struct sp_entry *spe)
      address, then map our page there. */
   return (pagedir_get_page (spe->t->pagedir, spe->upage) == NULL
           && pagedir_set_page (spe->t->pagedir, spe->upage,
-                               (uint8_t *)table.ft[spe->idx], spe->writable));
+                              (uint8_t *) table.ft[spe->idx].p_addr,
+                              spe->writable));
 }
