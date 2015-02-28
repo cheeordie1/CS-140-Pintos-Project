@@ -36,11 +36,11 @@ struct sp_entry
     bool writable;             /* Whether page is writable. */
     uint8_t *upage;            /* Virtual address of page. */
     struct thread *t;          /* Owner of the page. */
-    struct list_elem l_elem;    /* Element of list of sp_entries. */ 
     struct hash_elem h_elem;   /* Element of hash of sp_entries. */
+    struct list_elem l_elem;   /* Element of list of sp_entries. */
   };
 
-void page_table_init (void);
+void page_supp_init (void);
 struct sp_entry *page_supp_alloc (struct thread *t, uint8_t *upage);
 void page_supp_delete (struct sp_entry *spe_temp);
 

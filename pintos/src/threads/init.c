@@ -120,7 +120,7 @@ main (void)
 
 #ifdef VM
   /* Initialize frame table. */
-  // TODO: supp_page_init ();
+  page_supp_init ();
   frame_init (user_page_limit);
 #endif
 
@@ -282,7 +282,6 @@ parse_options (char **argv)
      for reproducibility.  To fix this, give the "-r" option to
      the pintos script to request real-time execution. */
   random_init (rtc_get_time ());
-  printf("\n\n\n\n\n\t\t\n\nHello %d\n\n\n\n",user_page_limit); 
   return argv;
 }
 

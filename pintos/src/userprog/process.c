@@ -372,8 +372,8 @@ load (const char *file_name, char *cmdline, void (**eip) (void), void **esp)
   process_activate ();
 
   /* Copy file name into TCB. */
-  t->exec_name = malloc (strnlen (file_name, PGSIZE) + 1);
-  strlcpy (t->exec_name, file_name, PGSIZE); 
+  t->exec_name = malloc (strnlen (file_name, PGSIZE - 1) + 1);
+  strlcpy (t->exec_name, file_name, PGSIZE - 1); 
 
   /* Open executable file. */
   file = filesys_open (file_name);

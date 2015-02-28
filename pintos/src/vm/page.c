@@ -16,7 +16,7 @@ static struct page_table sp_table;
 
 /* Initialize Supplementary Page Table. */
 void
-page_table_init ()
+page_supp_init ()
 {
   hash_init (&sp_table.pt_hash, page_hash, page_cmp, NULL);
   lock_init (&sp_table.pt_lock);
@@ -39,14 +39,14 @@ page_supp_alloc (struct thread *t, uint8_t *upage)
   lock_acquire (&sp_table.pt_lock);
   list_push_back (&t->spe_list, &spe->l_elem);
   hash_insert (&sp_table.pt_hash, &spe->h_elem);
-  lock_release (&sp_table.pt_lock);
+  lock_release (&sp_table.pt_lock); 
   return spe;
 }
 
 void
 page_supp_delete (struct sp_entry *spe)
 {
-  list_remove ();
+  list_remove (&spe->l_elem);
   hash_delete (&sp_table.pt_hash, &spe->h_elem);
   switch (spe->location)
     {
@@ -55,7 +55,7 @@ page_supp_delete (struct sp_entry *spe)
       case FRAMED:
       case FILESYSTEM:
       case SWAPPED:
-      break
+        break;
       default: NOT_REACHED ();
     }
   free (spe);
@@ -67,7 +67,7 @@ static unsigned
 page_hash (const struct hash_elem *e, void *aux UNUSED)
 {
   struct sp_entry *spe = hash_entry (e, struct sp_entry, h_elem);
-  return  hash_int ((uint32_t) frame_get (spe->ft_idx));
+  return  hash_int ((uint32_t) frame_get (spe->idx));
 }
 
 /* Comparison function to search supplementary 
@@ -79,7 +79,7 @@ page_cmp (const struct hash_elem *a,
           const struct hash_elem *b,
           void *aux UNUSED)
 {
-  struct spt_entry *spe_a = hash_entry (a, struct sp_entry, h_elem);
-  struct spt_entry *spe_b = hash_entry (b, struct sp_entry, h_elem);
+  struct sp_entry *spe_a = hash_entry (a, struct sp_entry, h_elem);
+  struct sp_entry *spe_b = hash_entry (b, struct sp_entry, h_elem);
 	  return spe_a->upage < spe_b->upage && spe_a->t->tid != spe_b->t->tid;
 }

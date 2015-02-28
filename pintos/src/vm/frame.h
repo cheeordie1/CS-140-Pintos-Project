@@ -20,7 +20,7 @@ struct lock eviction_lock;
 
 void frame_init (size_t user_page_limit);
 bool frame_obtain (struct sp_entry *spe);
-void frame_delete (size_t index);
-uint32_t *frame_get (size_t index);
+void frame_delete (struct sp_entry *spe);
+uint8_t *frame_get (size_t index);
 
 #endif /* vm/frame.h */

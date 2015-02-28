@@ -12,7 +12,7 @@ static struct frame_table
 static struct frame_table table;
 
 static size_t frame_evict ();
-static bool frame_fetch (struct sp_entry *spe);
+static bool frame_fetch (uint8_t *kpage, struct sp_entry *spe);
 static bool frame_install_page (struct sp_entry *spe);
 
 /* Allocates frame table memory. */
@@ -38,7 +38,7 @@ frame_obtain (struct sp_entry *spe)
       spe->idx = frame_evict ();
       PANIC ("\n\nRan out of memory to give you :*(\n\n");
     }
-  if (!frame_fetch (spe))
+  if (!frame_fetch ((uint8_t *) table.ft[spe->idx] ,spe))
     success = false;
   else if (!frame_install_page (spe))
     {
@@ -83,7 +83,7 @@ frame_get (size_t index)
   if (!bitmap_test (table.used_map, index) || 
       index == BITMAP_ERROR)
     return NULL;
-  ret_frame = (uint8_t *) table.ft[index] 
+  ret_frame = (uint8_t *) table.ft[index]; 
   return ret_frame;
 }
 
@@ -99,7 +99,6 @@ frame_evict ()
 static bool
 frame_fetch (uint8_t *kpage, struct sp_entry *spe)
 {
-  uint8_t *kpage;
   switch (spe->location)
     {
       case UNMAPPED:
