@@ -56,6 +56,7 @@ page_supp_destroy (struct thread *t)
     lock_acquire (&sp_table.pt_lock); 
     struct sp_entry *spe = list_entry (list_pop_front (&t->spe_list), 
                                        struct sp_entry, l_elem);
+    list_remove (&spe->l_elem);
     hash_delete (&sp_table.pt_hash, &spe->h_elem);
     lock_release (&sp_table.pt_lock); 
     page_supp_delete (spe);
@@ -92,7 +93,7 @@ static unsigned
 page_hash (const struct hash_elem *e, void *aux UNUSED)
 {
   struct sp_entry *spe = hash_entry (e, struct sp_entry, h_elem);
-  return  hash_int ((uint32_t) frame_get (spe->idx));
+  return  hash_int ((uint32_t) spe->upage);
 }
 
 /* Comparison function to search supplementary 
