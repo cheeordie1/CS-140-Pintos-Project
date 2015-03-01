@@ -87,6 +87,21 @@ page_supp_delete (struct sp_entry *spe)
   free (spe);
 }
 
+struct sp_entry *page_find (struct thread *t, void *vaddr) 
+{
+  struct sp_entry singleton;
+  singleton.t = t;
+  singleton.upage = (uint8_t *) vaddr;
+
+  struct hash_elem *spe_elem = hash_find (&sp_table.pt_hash, 
+                                          &singleton.h_elem);
+  if (spe_elem == NULL) 
+    {
+      return NULL;
+    }
+  return hash_entry (spe_elem, struct sp_entry, h_elem);
+}
+
 /* Hash function to insert elements into 
    supplementary page table. */
 static unsigned
@@ -107,5 +122,5 @@ page_cmp (const struct hash_elem *a,
 {
   struct sp_entry *spe_a = hash_entry (a, struct sp_entry, h_elem);
   struct sp_entry *spe_b = hash_entry (b, struct sp_entry, h_elem);
-	  return spe_a->upage < spe_b->upage && spe_a->t->tid != spe_b->t->tid;
+	  return spe_a->upage < spe_b->upage && spe_a->t->tid < spe_b->t->tid;
 }
