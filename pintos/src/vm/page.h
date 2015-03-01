@@ -46,5 +46,6 @@ void page_table_init (void);
 struct sp_entry *page_supp_alloc (struct thread *t, uint8_t *upage);
 void page_supp_delete (struct sp_entry *spe_temp);
 void page_supp_destroy (struct thread *t);
+struct sp_entry *page_find (struct thread *t, void *vaddr); 
 
 #endif /* vm/page.h */
