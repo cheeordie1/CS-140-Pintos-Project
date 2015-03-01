@@ -34,10 +34,8 @@ bool
 frame_obtain (struct sp_entry *spe)
 {
   bool success = true;
-  // TODO Acquire allocation lock
   // TODO acquire shared allocator lock
   lock_acquire (&table.ft_lock);
-  struct ft_entry *fte = frame_get (spe);
   spe->idx = bitmap_scan_and_flip (table.used_map, 0, 1, 0);
   if (spe->idx == BITMAP_ERROR)
     {
@@ -49,6 +47,7 @@ frame_obtain (struct sp_entry *spe)
       // acquire shared allocator lock
       PANIC ("\n\nRan out of memory to give you :*(\n\n");
     }
+  struct ft_entry *fte = frame_get (spe);
   if (!frame_install_page (spe))
     success = false;
   else if (!frame_fetch (spe))
@@ -93,8 +92,9 @@ struct ft_entry *
 frame_get (struct sp_entry *spe)
 {
   struct ft_entry *ret_frame;
+  ASSERT (spe->idx < bitmap_size (table.used_map));
   ASSERT (!bitmap_test (table.used_map, spe->idx) || 
-          spe->idx == BITMAP_ERROR);
+          spe->idx != BITMAP_ERROR);
   ret_frame = &table.ft[spe->idx]; 
   return ret_frame;
 }

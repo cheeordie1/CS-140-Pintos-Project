@@ -104,6 +104,12 @@ main (void)
   malloc_init ();
   paging_init ();
 
+#ifdef VM
+  /* Initialize virtual memory paging. */
+  frame_init (766);
+  page_supp_init ();
+#endif
+
   /* Segmentation. */
 #ifdef USERPROG
   tss_init ();
@@ -120,13 +126,6 @@ main (void)
   syscall_init ();
 #endif
 
-#ifdef VM
-  /* Initialize virtual memory paging. */
-  frame_init (user_page_limit);
-  page_supp_init ();
-  swap_init ();
-#endif
-
   /* Start thread scheduler and enable interrupts. */
   thread_start ();
   serial_init_queue ();
@@ -139,6 +138,10 @@ main (void)
   filesys_init (format_filesys);
 #endif
 
+#ifdef VM
+  swap_init ();
+#endif
+
   printf ("Boot complete.\n");
   
   /* Run actions specified on kernel command line. */
@@ -148,7 +151,7 @@ main (void)
   shutdown ();
   thread_exit ();
 }
-
+
 /* Clear the "BSS", a segment that should be initialized to
    zeros.  It isn't actually stored on disk or zeroed by the
    kernel loader, so we have to zero it ourselves.

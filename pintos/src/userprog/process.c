@@ -258,7 +258,9 @@ process_exit (void)
       cur->pagedir = NULL;
       pagedir_activate (NULL);
       pagedir_destroy (pd);
-      page_supp_destroy (cur);
+      #ifdef VM
+        page_supp_destroy (cur);
+      #endif
     }
 }
 
@@ -547,9 +549,11 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT ((read_bytes + zero_bytes) % PGSIZE == 0);
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
-
-  struct thread *t = thread_current ();
-  size_t page_no = 0;
+  
+  #ifdef VM
+    struct thread *t = thread_current ();
+    size_t page_no = 0;
+  #endif
   file_seek (file, ofs);
   while (read_bytes > 0 || zero_bytes > 0) 
     {
@@ -569,12 +573,9 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
         spe->fp = file;
         spe->location = FILESYSTEM;
         spe->upage = upage;
+        page_no++;
       #else
         uint8_t *kpage = palloc_get_page (PAL_USER);
-<<<<<<< HEAD
-=======
-
->>>>>>> fdc4be26435c462c12c1e668014ad954a5f8ad41
         if (kpage == NULL)
           return false;
 
@@ -597,7 +598,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
       upage += PGSIZE;
-      page_no++;
     }
   return true;
 }
