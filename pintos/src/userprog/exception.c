@@ -140,13 +140,10 @@ page_fault (struct intr_frame *f)
      (#PF)". */
   asm ("movl %%cr2, %0" : "=r" (fault_addr));
   
-  void *rounded_addr = pg_round_down (fault_addr);
-  struct sp_entry *spe = page_find (thread_current (), rounded_addr);
-
   /* Turn interrupts back on (they were only off so that we could
      be assured of reading CR2 before it changed). */
   intr_enable ();
-  
+
   /* Count page faults. */
   page_fault_cnt++;
 
@@ -155,14 +152,31 @@ page_fault (struct intr_frame *f)
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
 
+#ifdef VM
+  struct thread *t = thread_current ();
+  if ((uint32_t) fault_addr < PGSIZE)
+    goto error;
+  void *curr_pg = pg_round_down (fault_addr);
+  struct sp_entry *curr_spe = page_find (t, curr_pg);
+  if (curr_spe == NULL)
+    goto error;
+  /* Fetch from swap or filesys. */
+  if (curr_spe->location != FRAMED && not_present)
+    {
+      if (frame_obtain (curr_spe))
+        return;
+    }
+#endif 
+
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
      which fault_addr refers. */
-  printf ("Page fault at %p: %s error %s page in %s context.\n",
-          fault_addr,
-          not_present ? "not present" : "rights violation",
-          write ? "writing" : "reading",
-          user ? "user" : "kernel");
-  kill (f);
+  error:
+    printf ("Page fault at %p: %s error %s page in %s context.\n",
+            fault_addr,
+            not_present ? "not present" : "rights violation",
+            write ? "writing" : "reading",
+            user ? "user" : "kernel");
+    kill (f);
 }
 

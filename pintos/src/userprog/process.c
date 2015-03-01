@@ -22,6 +22,7 @@
 #ifdef VM
 #include "vm/frame.h"
 #endif
+
 #define P_RUNNING 0
 #define P_EXITED 1
 #define P_LOADING 2
@@ -188,7 +189,6 @@ process_exit (void)
   if (cur->exec)
     {
       lock_acquire (&fs_lock);
-      file_allow_write (cur->exec);
       file_close (cur->exec);
       lock_release (&fs_lock);
     }
@@ -257,10 +257,10 @@ process_exit (void)
          that's been freed (and cleared). */
       cur->pagedir = NULL;
       pagedir_activate (NULL);
-      pagedir_destroy (pd);
       #ifdef VM
         page_supp_destroy (cur);
       #endif
+      pagedir_destroy (pd);
     }
 }
 
@@ -568,7 +568,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
         struct sp_entry *spe = page_supp_alloc (t, upage);
         spe->read_bytes = page_read_bytes;
         spe->zero_bytes = page_zero_bytes;
-        spe->ofs = page_no * PGSIZE;
+        spe->ofs = ofs + page_no * PGSIZE;
         spe->writable = writable;
         spe->fp = file;
         spe->location = FILESYSTEM;

@@ -38,7 +38,8 @@ page_supp_alloc (struct thread *t, uint8_t *upage)
   spe->ofs = 0;
   spe->writable = true;
   spe->upage = upage;
-  spe->t = t;
+  spe->pagedir = t->pagedir;
+  spe->tid = t->tid;
   lock_acquire (&sp_table.pt_lock);
   list_push_back (&t->spe_list, &spe->l_elem);
   hash_insert (&sp_table.pt_hash, &spe->h_elem);
@@ -73,9 +74,6 @@ page_supp_delete (struct sp_entry *spe)
         frame_delete (spe);
         break;
       case FILESYSTEM:
-        lock_acquire (&fs_lock);
-        file_close (spe->fp);
-        lock_release (&fs_lock);
         break;
       case SWAPPED:
         swap_delete (spe);
@@ -90,7 +88,7 @@ page_supp_delete (struct sp_entry *spe)
 struct sp_entry *page_find (struct thread *t, void *vaddr) 
 {
   struct sp_entry singleton;
-  singleton.t = t;
+  singleton.tid = t->tid;
   singleton.upage = (uint8_t *) vaddr;
 
   struct hash_elem *spe_elem = hash_find (&sp_table.pt_hash, 
@@ -122,5 +120,5 @@ page_cmp (const struct hash_elem *a,
 {
   struct sp_entry *spe_a = hash_entry (a, struct sp_entry, h_elem);
   struct sp_entry *spe_b = hash_entry (b, struct sp_entry, h_elem);
-	  return spe_a->upage < spe_b->upage && spe_a->t->tid < spe_b->t->tid;
+	  return spe_a->upage < spe_b->upage && spe_a->tid < spe_b->tid;
 }

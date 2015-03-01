@@ -36,7 +36,8 @@ struct sp_entry
     size_t ofs;                /* Offset into file. */
     bool writable;             /* Whether page is writable. */
     uint8_t *upage;            /* Virtual address of page. */
-    struct thread *t;          /* Owner of the page. */
+    tid_t tid;                 /* Page owner's tid. */
+    uint32_t *pagedir;         /* Page owner's pagedir. */
     size_t sector;             /* Beginning of swap sector */
     struct hash_elem h_elem;   /* Element of hash of sp_entries. */
     struct list_elem l_elem;   /* Element of list of sp_entries. */

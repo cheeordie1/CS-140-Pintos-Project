@@ -48,11 +48,11 @@ frame_obtain (struct sp_entry *spe)
       PANIC ("\n\nRan out of memory to give you :*(\n\n");
     }
   struct ft_entry *fte = frame_get (spe);
-  if (!frame_install_page (spe))
-    success = false;
-  else if (!frame_fetch (spe))
+  if (!frame_fetch (spe))
+      success = false;
+  else if (!frame_install_page (spe))
     {
-      pagedir_clear_page (spe->t->pagedir, spe->upage);
+      palloc_free_page ((uint8_t *) frame_get (spe)->p_addr);
       success = false;
     }
   if (!success)
@@ -79,7 +79,7 @@ frame_delete (struct sp_entry *spe)
     return;
   // TODO acquire shared allocator lock
   ASSERT (bitmap_test (table.used_map, spe->idx));
-  pagedir_clear_page (spe->t->pagedir, spe->upage);
+  pagedir_clear_page (spe->pagedir, spe->upage);
   struct ft_entry *fte = frame_get (spe);
   uint8_t *pg = (uint8_t *) fte->p_addr;
   palloc_free_page (pg);
@@ -127,29 +127,21 @@ frame_fetch (struct sp_entry *spe)
         swap_delete (spe);
         break;
       case FILESYSTEM:
-        file_seek (spe->fp, spe->ofs * PGSIZE);
-        if (spe->read_bytes == PGSIZE) 
+        if (spe->zero_bytes != PGSIZE) 
           {
             kpage = palloc_get_page (PAL_USER);
             if (kpage == NULL) 
               return false;
-            if ((size_t) file_read (spe->fp, kpage, spe->read_bytes) < spe->read_bytes)
+            if ((size_t) file_read_at (spe->fp, kpage,
+                spe->read_bytes, spe->ofs) < spe->read_bytes)
               thread_exit ();
+            memset (kpage + spe->read_bytes, 0, spe->zero_bytes);
           } 
-        else if (spe->zero_bytes == PGSIZE)
+        else
           {
             kpage = palloc_get_page (PAL_ZERO);
             if (kpage == NULL) 
               return false;
-          }
-        else 
-          {
-            kpage = palloc_get_page (PAL_USER);
-            if (kpage == NULL) 
-              return false;
-            if ((size_t) file_read (spe->fp, kpage, spe->read_bytes) < spe->read_bytes)
-              thread_exit ();
-            memset (kpage + spe->read_bytes, 0, spe->zero_bytes);
           }
         break;
       default: NOT_REACHED ();
@@ -170,8 +162,8 @@ frame_install_page (struct sp_entry *spe)
 {
   /* verify that there's not already a page at that virtual
      address, then map our page there. */
-  return (pagedir_get_page (spe->t->pagedir, spe->upage) == NULL
-          && pagedir_set_page (spe->t->pagedir, spe->upage,
+  return (pagedir_get_page (spe->pagedir, spe->upage) == NULL
+          && pagedir_set_page (spe->pagedir, spe->upage,
                               (uint8_t *) table.ft[spe->idx].p_addr,
                               spe->writable));
 }
