@@ -70,8 +70,7 @@ page_supp_delete (struct sp_entry *spe)
 {
   switch (spe->location)
     {
-      case FRAMED:
-        frame_delete (spe);
+      case UNMAPPED:
         break;
       case FILESYSTEM:
         break;
@@ -79,7 +78,7 @@ page_supp_delete (struct sp_entry *spe)
         swap_delete (spe);
         break;
       default:
-        barrier ();
+        frame_delete (spe);
         break;
     }
   free (spe);
@@ -120,5 +119,5 @@ page_cmp (const struct hash_elem *a,
 {
   struct sp_entry *spe_a = hash_entry (a, struct sp_entry, h_elem);
   struct sp_entry *spe_b = hash_entry (b, struct sp_entry, h_elem);
-	  return spe_a->upage < spe_b->upage && spe_a->tid < spe_b->tid;
+	  return spe_a->upage < spe_b->upage || spe_a->tid < spe_b->tid;
 }

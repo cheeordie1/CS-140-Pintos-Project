@@ -12,8 +12,10 @@
 #include "devices/shutdown.h"
 #include "lib/kernel/hash.h"
 #include "userprog/pagedir.h"
+#include "vm/frame.h"
 
-static bool is_valid_ptr (const void *ptr);
+static bool is_valid_ptr (const void *ptr, size_t len);
+static bool is_valid_mapping (const void *ptr, size_t len);
 static void syscall_handler (struct intr_frame *);
 static void syscall_halt (void);
 static void syscall_exit (int status);
@@ -28,8 +30,13 @@ static int syscall_write (int fd, const void* buf, uint32_t size);
 static void syscall_seek (int fd, uint32_t position);
 static uint32_t syscall_tell (int fd);
 static void syscall_close (int fd);
-static void* syscall_arg (void *esp, int index);
+#ifdef VM
+static mapid_t syscall_mmap (int fd, void *addr);
+static void syscall_munmap (mapid_t mapid);
+#endif
+static void *syscall_arg (void *esp, int index);
 
+/* Initialize system calls. */
 void
 syscall_init (void) 
 {
@@ -66,7 +73,7 @@ syscall_exit (int status)
 static pid_t
 syscall_exec (const char *cmd_line)
 {
-  if (!is_valid_ptr (cmd_line))
+  if (!is_valid_ptr (cmd_line, 1))
     syscall_exit (-1);
   pid_t process = process_execute (cmd_line);
   return process;
@@ -97,7 +104,7 @@ syscall_wait (pid_t pid)
 static bool
 syscall_create (const char *file, uint32_t initial_size)
 {
-  if (!is_valid_ptr (file))
+  if (!is_valid_ptr (file, 1))
     syscall_exit (-1); 
   bool success;
   lock_acquire (&fs_lock);
@@ -112,7 +119,7 @@ syscall_create (const char *file, uint32_t initial_size)
 static bool
 syscall_remove (const char *file)
 {
-  if (!is_valid_ptr (file))
+  if (!is_valid_ptr (file, 1))
     syscall_exit (-1);
   bool success;
   lock_acquire (&fs_lock);
@@ -126,7 +133,7 @@ syscall_remove (const char *file)
 static int
 syscall_open (const char *file)
 {
-  if (!is_valid_ptr (file))
+  if (!is_valid_ptr (file, 1))
     syscall_exit (-1);
   struct thread *t = thread_current ();
 
@@ -173,7 +180,7 @@ syscall_filesize (int fd)
 static int
 syscall_read (int fd, void *buf, uint32_t size)
 {
-  if (!is_valid_ptr (buf))
+  if (!is_valid_ptr (buf, size))
     syscall_exit (-1);
   int bytes_read = 0;
   if (fd == STDIN_FILENO)
@@ -208,7 +215,7 @@ syscall_read (int fd, void *buf, uint32_t size)
 static int
 syscall_write (int fd, const void *buf, uint32_t size)
 {
-  if (!is_valid_ptr (buf))
+  if (!is_valid_ptr (buf, size))
     syscall_exit (-1);
   int bytes_written = 0; 
   if (fd == STDOUT_FILENO)
@@ -277,24 +284,46 @@ syscall_close (int fd)
   lock_release (&fs_lock);
 }
 
+#ifdef VM
+/* Map a file into the user vaddr space. Return the mapid of the file. */
+static mapid_t syscall_mmap (int fd, void *addr) 
+{
+  size_t len = syscall_filesize (fd);
+  if (fd < 0)
+    return -1;
+  if (!is_valid_ptr (addr, len))
+    syscall_exit (-1);
+  if (!is_valid_mapping (addr, len))
+    return -1;
+  return -1;  
+}
+
+/* Unmap a previously mapped file from the user vaddr space. */
+static void syscall_munmap (mapid_t mapid)
+{
+
+}
+#endif
+
 /* Retrieves an argument at a given index from the stack pointer 
    esp argument. */
 static void *
 syscall_arg (void *esp, int index)
 {
   void *ret_arg = (char *) esp + (index * sizeof (void *));
-  if (!is_valid_ptr (ret_arg)) 
+  if (!is_valid_ptr (ret_arg, 1)) 
     syscall_exit (-1); 
   return ret_arg;
 }
+
 
 /* Switch all cases of interrupt signal to call system calls. */
 static void
 syscall_handler (struct intr_frame *f) 
 {
-  if (!is_valid_ptr (f->esp)) 
+  if (!is_valid_ptr (f->esp, 1)) 
     syscall_exit (-1); 
-  int syscall = *(int*) f->esp;
+  int syscall = *(int *) f->esp;
   switch (syscall)
     {
       /* Halt the operating system. */                   
@@ -355,21 +384,67 @@ syscall_handler (struct intr_frame *f)
       case SYS_CLOSE:
          syscall_close (*(int *) syscall_arg (f->esp, 1));
          break;
+      #ifdef VM
+      /* Map a file to user space. */
+      case SYS_MMAP:
+         f->eax = syscall_mmap (*(int *) syscall_arg (f->esp, 1), 
+                                *(void **) syscall_arg (f->esp, 2));
+         break;
+      /* Unmap a file from user space.  */
+      case SYS_MUNMAP:
+         syscall_munmap (*(mapid_t *) syscall_arg (f->esp, 1));
+         break;
+      #endif
       default:
         printf ("system call!\n");
         thread_exit ();
   }
 }
 
+#ifdef VM
+/* Validate mapping a file to the vaddr ptr. */
+static bool
+is_valid_mapping (const void *ptr, size_t len)
+{
+  if (!is_valid_ptr (ptr, len))
+    return false;
+  struct thread *t = thread_current ();
+  if (len == 0)
+    return false;
+  size_t curr_pg;
+  for (curr_pg = 0; curr_pg < len; curr_pg += PGSIZE) 
+    {
+      if (pagedir_get_page (t->pagedir, ptr) != NULL)
+        return false;
+    }
+  return true;
+}
+#endif
+
 /* Validate the address of the pointer passed in. */
 static bool
-is_valid_ptr (const void *ptr)
+is_valid_ptr (const void *ptr, size_t len)
 {
-  if (is_kernel_vaddr (ptr))
-    return false;
+  /* The virtual addr region must both start and end in 
+     user address space range. */
   if (!is_user_vaddr (ptr))
     return false;
+  if (!is_user_vaddr ((void *)((char *) ptr + len)))
+    return false;
+
+  /* The region cannot wrap around across kernel virtual address space. */
+  if ((char *) ptr + len < (char *) ptr)
+    return false;
+  if ((uint32_t) ptr < PGSIZE)
+    return false;
+#ifdef VM
+  void *curr_pg = pg_round_down (ptr);
+  struct sp_entry *curr_spe = page_find (thread_current (), curr_pg);
+  if (curr_spe == NULL)
+    return false;
+#else
   if (pagedir_get_page (thread_current ()->pagedir, ptr) == NULL)
     return false;
+#endif
   return true;
 }

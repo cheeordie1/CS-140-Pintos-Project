@@ -161,11 +161,8 @@ page_fault (struct intr_frame *f)
   if (curr_spe == NULL)
     goto error;
   /* Fetch from swap or filesys. */
-  if (curr_spe->location != FRAMED && not_present)
-    {
-      if (frame_obtain (curr_spe))
-        return;
-    }
+  if (frame_obtain (curr_spe))
+    return;
 #endif 
 
   /* To implement virtual memory, delete the rest of the function
