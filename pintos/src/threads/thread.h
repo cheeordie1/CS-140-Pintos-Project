@@ -149,7 +149,8 @@ struct thread
 #endif
 
 #ifdef VM
-    struct list spe_list;               /* list of spt entries used by this thread. */
+    struct list spe_list;               /* List of spt entries used by this thread. */
+    void *saved_esp;                    /* Saved esp for page faults in kernel. */
 #endif
 
     /* Owned by thread.c. */

@@ -21,7 +21,6 @@
 enum cache_flag
   {
     UNMAPPED = 000,         /* Faulting page has not been stored. */
-    FRAMED = 001,           /* Faulting page is in frame table. */
     SWAPPED = 002,          /* Faulting page is in swap slot. */
     FILESYSTEM = 004        /* Faulting page is on disc. */
   };

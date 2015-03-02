@@ -1,7 +1,12 @@
+#include <random.h>//just for now :')
+
+
+
 #include "vm/frame.h"
 #include <bitmap.h>
 #include <debug.h>
 #include <string.h>
+#include "userprog/pagedir.h"
 #include "vm/swap.h" 
 
 struct frame_table
@@ -23,9 +28,14 @@ frame_init (size_t user_page_limit)
 {
   lock_init (&eviction_lock);
   lock_init (&table.ft_lock);
-  table.ft = (struct ft_entry *) calloc (user_page_limit, 
+  /* Free memory starts at 1 MB and runs to the end of RAM. */
+  uint8_t *free_start = ptov (1024 * 1024);
+  uint8_t *free_end = ptov (init_ram_pages * PGSIZE);
+  size_t free_pages = (free_end - free_start) / PGSIZE;
+  size_t user_pages = free_pages / 2; 
+  table.ft = (struct ft_entry *) calloc (user_pages, 
                                          sizeof (struct ft_entry));
-  table.used_map = bitmap_create (user_page_limit);
+  table.used_map = bitmap_create (user_pages);
 }
 
 /* Obtain a frame for the page referred to by spe.
@@ -44,8 +54,7 @@ frame_obtain (struct sp_entry *spe)
       // TODO acquire exclusive evictor lock
       spe->idx = frame_evict ();
       // TODO release exclusive evictor lock
-      // acquire shared allocator lock
-      PANIC ("\n\nRan out of memory to give you :*(\n\n");
+      // acquire shared allocator lock :')
     }
   struct ft_entry *fte = frame_get (spe);
   if (!frame_fetch (spe))
@@ -62,7 +71,6 @@ frame_obtain (struct sp_entry *spe)
     }
   else
     {
-      spe->location = FRAMED;
       fte->user = spe;
     } 
   lock_release (&table.ft_lock);
@@ -105,8 +113,41 @@ frame_evict ()
 {
   // TODO implement eviction
   /* stack information is read to swap slot*/
+
+  /*
+    currently, we just remove the first mother fucker in there
+    
+    if unmapped
+        goes to swap
+    
+    if it's filesys and hasn't been changed, just fuck it
+
+    if it's swappable
+        goes to swap
+  */
+  int money_money_money_mooooney = (int) random_ulong ();
+  struct ft_entry fte = table.ft[money_money_money_mooooney];
+  switch (fte.user->location) 
+    {
+      case UNMAPPED:
+        fte.user->location = SWAPPED;
+      case SWAPPED:
+        swap_write (fte.user);
+        break;
+      case FILESYSTEM:
+        if(pagedir_is_dirty (fte.user->pagedir, fte.user->upage))
+          {
+            file_write_at (fte.user->fp, (uint8_t *) fte.p_addr,
+                           fte.user->read_bytes, fte.user->ofs);
+          }
+        break;
+    }
+   
+
+
+
   /* executables and code segments are read to disk*/
-  return SIZE_MAX;
+  return money_money_money_mooooney; // :')
 }
 
 /* Fetches the page referred to by spe into kpage. */

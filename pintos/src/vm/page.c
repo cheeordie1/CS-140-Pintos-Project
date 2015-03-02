@@ -70,8 +70,7 @@ page_supp_delete (struct sp_entry *spe)
 {
   switch (spe->location)
     {
-      case FRAMED:
-        frame_delete (spe);
+      case UNMAPPED:
         break;
       case FILESYSTEM:
         break;
@@ -79,7 +78,7 @@ page_supp_delete (struct sp_entry *spe)
         swap_delete (spe);
         break;
       default:
-        barrier ();
+        frame_delete (spe);
         break;
     }
   free (spe);
@@ -94,9 +93,7 @@ struct sp_entry *page_find (struct thread *t, void *vaddr)
   struct hash_elem *spe_elem = hash_find (&sp_table.pt_hash, 
                                           &singleton.h_elem);
   if (spe_elem == NULL) 
-    {
-      return NULL;
-    }
+    return NULL;
   return hash_entry (spe_elem, struct sp_entry, h_elem);
 }
 

@@ -7,6 +7,8 @@
 #include "vm/frame.h"
 #include "vm/page.h"
 
+#define STACK_LIMIT 0x00800000 
+
 /* Number of page faults processed. */
 static long long page_fault_cnt;
 
@@ -159,13 +161,19 @@ page_fault (struct intr_frame *f)
   void *curr_pg = pg_round_down (fault_addr);
   struct sp_entry *curr_spe = page_find (t, curr_pg);
   if (curr_spe == NULL)
-    goto error;
-  /* Fetch from swap or filesys. */
-  if (curr_spe->location != FRAMED && not_present)
     {
-      if (frame_obtain (curr_spe))
-        return;
+      if (PHYS_BASE - curr_pg < STACK_LIMIT)
+        { 
+          curr_spe = page_supp_alloc (thread_current (), curr_pg);
+          curr_spe->writable = true;
+          curr_spe->location = UNMAPPED;
+        }
+      else
+        goto error;
     }
+  /* Fetch from swap or filesys. */
+  if (frame_obtain (curr_spe))
+    return;
 #endif 
 
   /* To implement virtual memory, delete the rest of the function
