@@ -6,6 +6,9 @@
 #include "threads/malloc.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
+#ifdef VM
+#include "vm/page.h"
+#endif
 #include "filesys/file.h"
 #include "filesys/filesys.h"
 #include "devices/input.h"
@@ -369,7 +372,16 @@ is_valid_ptr (const void *ptr)
     return false;
   if (!is_user_vaddr (ptr))
     return false;
+  if ((uint32_t) ptr < PGSIZE)
+    return false;
+#ifdef VM
+  void *curr_pg = pg_round_down (ptr);
+  struct sp_entry *curr_spe = page_find (thread_current (), curr_pg);
+  if (curr_spe == NULL)
+    return false;
+#else
   if (pagedir_get_page (thread_current ()->pagedir, ptr) == NULL)
     return false;
+#endif
   return true;
 }

@@ -508,7 +508,7 @@ validate_segment (const struct Elf32_Phdr *phdr, struct file *file)
      user address space range. */
   if (!is_user_vaddr ((void *) phdr->p_vaddr))
     return false;
-  if (!is_user_vaddr ((void *) (phdr->p_vaddr + phdr->p_memsz)))
+  if (!is_user_vaddr ((void *) ((char *)phdr->p_vaddr + phdr->p_memsz)))
     return false;
 
   /* The region cannot "wrap around" across the kernel virtual
