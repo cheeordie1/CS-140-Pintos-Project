@@ -296,12 +296,35 @@ static mapid_t syscall_mmap (int fd, void *addr)
   if (!is_valid_mapping (addr, len))
     return -1;
 
-  /*
-    static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
-                          uint32_t read_bytes, uint32_t zero_bytes,
-                          bool writable);
-  */
-
+  struct thread *t = thread_current ();
+  struct hash_elem *fd_entry;
+  if ((fd_entry = fdt_search (&t->fd_hash, fd)) == NULL)
+    return -1;
+  struct file *file_ = hash_entry (fd_entry, struct file_descriptor,
+                                   elem)->file_;
+  if ((uint32_t) addr % PGSIZE == 0)
+    return -1;
+  
+  size_t read_bytes = len;
+  size_t zero_bytes = 0;
+  uint8_t *upage = addr;
+  size_t page_no = 0;
+  while (read_bytes > 0 || zero_bytes > 0)
+    {
+      size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;   
+      size_t page_zero_bytes = PGSIZE - page_read_bytes;
+      
+      struct sp_entry *spe = page_supp_alloc (t, upage);
+      spe->read_bytes = page_read_bytes;
+      spe->zero_bytes = page_zero_bytes;
+      spe->ofs = page_no * PGSIZE;
+      spe->writable = file_->deny_write;
+      spe->fp = file_;
+      spe->location = FILESYSTEM;
+      spe->upage = upage;
+      upage = PGSIZE; 
+      read_bytes -= PGSIZE;
+    }
 
   return -1;  
 }

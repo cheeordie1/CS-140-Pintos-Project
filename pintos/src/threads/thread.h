@@ -46,8 +46,8 @@ struct file_descriptor
   };
 
 bool fdt_cmp (const struct hash_elem *a,
-                  const struct hash_elem *b,
-                  void *aux UNUSED);
+              const struct hash_elem *b,
+              void *aux UNUSED);
 void fdt_close (struct hash_elem *fd_entry, void *aux UNUSED);
 bool fdt_insert (struct hash *fdt_hash, struct file_descriptor *fdt_entry);
 unsigned fdt_hash (const struct hash_elem *e, void *aux UNUSED);
