@@ -51,8 +51,7 @@ frame_obtain (struct sp_entry *spe)
       // TODO acquire exclusive evictor lock
       spe->idx = frame_evict ();
       // TODO release exclusive evictor lock
-      // acquire shared allocator lock
-      PANIC ("\n\nRan out of memory to give you :*(\n\n");
+      // acquire shared allocator lock :')
     }
   struct ft_entry *fte = frame_get (spe);
   if (!frame_fetch (spe))
