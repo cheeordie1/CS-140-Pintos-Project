@@ -73,7 +73,7 @@ syscall_exit (int status)
 static pid_t
 syscall_exec (const char *cmd_line)
 {
-  if (!is_valid_ptr (cmd_line, 1))
+  if (!is_valid_ptr (cmd_line, 0))
     syscall_exit (-1);
   pid_t process = process_execute (cmd_line);
   return process;
@@ -104,7 +104,7 @@ syscall_wait (pid_t pid)
 static bool
 syscall_create (const char *file, uint32_t initial_size)
 {
-  if (!is_valid_ptr (file, 1))
+  if (!is_valid_ptr (file, 0))
     syscall_exit (-1); 
   bool success;
   lock_acquire (&fs_lock);
@@ -119,7 +119,7 @@ syscall_create (const char *file, uint32_t initial_size)
 static bool
 syscall_remove (const char *file)
 {
-  if (!is_valid_ptr (file, 1))
+  if (!is_valid_ptr (file, 0))
     syscall_exit (-1);
   bool success;
   lock_acquire (&fs_lock);
@@ -133,7 +133,7 @@ syscall_remove (const char *file)
 static int
 syscall_open (const char *file)
 {
-  if (!is_valid_ptr (file, 1))
+  if (!is_valid_ptr (file, 0))
     syscall_exit (-1);
   struct thread *t = thread_current ();
 
@@ -289,12 +289,20 @@ syscall_close (int fd)
 static mapid_t syscall_mmap (int fd, void *addr) 
 {
   size_t len = syscall_filesize (fd);
-  if (fd < 0)
+  if (len < 0)
     return -1;
   if (!is_valid_ptr (addr, len))
     syscall_exit (-1);
   if (!is_valid_mapping (addr, len))
     return -1;
+
+  /*
+    static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
+                          uint32_t read_bytes, uint32_t zero_bytes,
+                          bool writable);
+  */
+
+
   return -1;  
 }
 
@@ -311,7 +319,7 @@ static void *
 syscall_arg (void *esp, int index)
 {
   void *ret_arg = (char *) esp + (index * sizeof (void *));
-  if (!is_valid_ptr (ret_arg, 1)) 
+  if (!is_valid_ptr (ret_arg, 0)) 
     syscall_exit (-1); 
   return ret_arg;
 }
@@ -321,7 +329,7 @@ syscall_arg (void *esp, int index)
 static void
 syscall_handler (struct intr_frame *f) 
 {
-  if (!is_valid_ptr (f->esp, 1)) 
+  if (!is_valid_ptr (f->esp, 0)) 
     syscall_exit (-1); 
   int syscall = *(int *) f->esp;
   switch (syscall)

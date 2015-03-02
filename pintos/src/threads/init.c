@@ -106,7 +106,7 @@ main (void)
 
 #ifdef VM
   /* Initialize virtual memory paging. */
-  frame_init (10);
+  frame_init (100);
   page_supp_init ();
 #endif
 
