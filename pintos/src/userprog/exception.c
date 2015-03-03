@@ -4,6 +4,7 @@
 #include "userprog/gdt.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "threads/vaddr.h"
 #include "vm/frame.h"
 #include "vm/page.h"
 
@@ -14,6 +15,10 @@ static long long page_fault_cnt;
 
 static void kill (struct intr_frame *);
 static void page_fault (struct intr_frame *);
+
+#ifdef VM
+static bool validate_on_stack (void *ptr);
+#endif
 
 /* Registers handlers for interrupts that can be caused by user
    programs.
@@ -158,19 +163,30 @@ page_fault (struct intr_frame *f)
   struct thread *t = thread_current ();
   if ((uint32_t) fault_addr < PGSIZE)
     goto error;
+  if (user)
+    {
+      if (!is_user_vaddr (fault_addr))
+        goto error;
+      if (!validate_on_stack (f->esp))
+        goto error;
+      void *curr_pg = pg_round_down (fault_addr);
+      struct sp_entry *curr_spe = page_find (t, curr_pg);
+      if (curr_spe == NULL)
+        {
+          if (PHYS_BASE - (fault_addr) > STACK_LIMIT)
+            goto error;
+          else
+            {
+              if (fault_addr < f->esp && !write)
+                goto error;
+              curr_spe = page_supp_alloc (thread_current (), curr_pg);
+              curr_spe->writable = true;
+              curr_spe->location = UNMAPPED;
+            }
+        }
+    }
   void *curr_pg = pg_round_down (fault_addr);
   struct sp_entry *curr_spe = page_find (t, curr_pg);
-  if (curr_spe == NULL)
-    {
-      if (PHYS_BASE - curr_pg < STACK_LIMIT)
-        { 
-          curr_spe = page_supp_alloc (thread_current (), curr_pg);
-          curr_spe->writable = true;
-          curr_spe->location = UNMAPPED;
-        }
-      else
-        goto error;
-    }
   /* Fetch from swap or filesys. */
   if (frame_obtain (curr_spe))
     return;
@@ -188,3 +204,25 @@ page_fault (struct intr_frame *f)
     kill (f);
 }
 
+#ifdef VM
+/* Validate that a pointer is on the stack. */
+static bool
+validate_on_stack (void *ptr)
+{
+  if (pagedir_get_page (thread_current ()->pagedir, ptr) == NULL)
+    {
+      if (PHYS_BASE - (ptr) > STACK_LIMIT)
+        return false;
+      else
+        {
+          void *curr_pg = pg_round_down (ptr);
+          struct sp_entry *curr_spe = page_supp_alloc (thread_current (),
+                                                       curr_pg);
+          curr_spe->writable = true;
+          curr_spe->location = UNMAPPED;
+          return true;
+        }
+    }
+  return true;
+}
+#endif

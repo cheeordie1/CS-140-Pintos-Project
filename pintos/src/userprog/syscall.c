@@ -304,25 +304,19 @@ static mapid_t syscall_mmap (int fd, void *addr)
   size_t len = syscall_filesize (fd);
   if (len == 0)
     return -1;
+  if (((uint32_t) addr) % PGSIZE != 0)
+    return -1;
   if (!is_valid_ptr (addr, len - 1))
     syscall_exit (-1);
   if (!is_valid_mapping (addr, len))
     return -1;
-
-  /*
-    static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
-                          uint32_t read_bytes, uint32_t zero_bytes,
-                          bool writable);
-  */
-
-
   return -1;  
 }
 
 /* Unmap a previously mapped file from the user vaddr space. */
 static void syscall_munmap (mapid_t mapid)
 {
-
+  return; 
 }
 #endif
 
@@ -479,17 +473,9 @@ is_valid_ptr (const void *ptr, size_t len)
 static void
 validate_esp (void *esp)
 {
-  void *curr_pg = pg_round_down (esp);
-  struct sp_entry *curr_spe = page_find (thread_current (), curr_pg);
-  if (curr_spe == NULL)
+  if (pagedir_get_page (thread_current ()->pagedir, esp) == NULL)
     {
-      if (PHYS_BASE - curr_pg < STACK_LIMIT)
-        {
-          curr_spe = page_supp_alloc (thread_current (), curr_pg);
-          curr_spe->writable = true;
-          curr_spe->location = UNMAPPED; 
-        }
-      else
+      if (PHYS_BASE - esp > STACK_LIMIT)
         syscall_exit (-1);
     }
 }
