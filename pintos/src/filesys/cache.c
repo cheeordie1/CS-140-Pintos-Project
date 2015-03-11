@@ -63,13 +63,13 @@ cache_cmp (const struct hash_elem *a,
   return (block_a->inode_sector < block_b->inode_sector);
 }
 
-/* Find inode cached in buffer_cache. 
+/* Find file sector cached in buffer_cache. 
    Return null if not present. */
-struct inode *
-cache_find_inode (block_sector_t inode_sector)
+struct void *
+cache_find_inode (block_sector_t sector)
 {
   struct cache_block singleton;
-  singleton.inode_sector = inode_sector;
+  singleton.inode_sector = sector;
   struct hash_elem *cached_inode = hash_find (&cache.cache_segment, 
                                               &singleton.elem);
   if (hash_elem == NULL)

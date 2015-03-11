@@ -9,8 +9,11 @@
 
 /* Identifies an inode. */
 #define INODE_MAGIC 0x494e4f44
-
 #define INODE_ERROR -1
+
+#define DIRECT_SECTORS 8
+#define DOUBIND_SECTOR 7
+#define BLOCKNUMS_PER_IND 256
 
 /* On-disk inode.
    Must be exactly BLOCK_SECTOR_SIZE bytes long. */
@@ -24,14 +27,16 @@ struct inode_disk
     int open_cnt;                        /* Number of openers. */
     bool removed;                        /* True if deleted, false otherwise. */
     bool dir;                            /* True if directory, false otherwise. */
-    bool large;                          /* True if large block addressing. */
+    bool large;                          /* True if large block addressing.  */
     int deny_write_cnt;                  /* 0: writes ok, >0: deny writes. */
     unsigned magic;                      /* Magic number. */
     char unused[32];                     /* Unused space. */
   };
 
 static block_sector_t small_lookup (struct inode *inode, int block_idx);
-static int large_indexlookup(struct inode *inode, int block_idx);
+static block_sector_t large_lookup (struct inode *inode, int block_idx);
+static block_sector_t lookup_in_sector (block_sector_t file_data_sector,
+                                        int sector_ofs);
 
 /* Returns the number of sectors to allocate for an inode SIZE
    bytes long. */
@@ -73,28 +78,45 @@ inode_lookup (struct inode *inode, int block_idx)
 static block_sector_t 
 small_lookup (struct inode *inode, int block_idx)
 {
-  ASSERT (block_idx >= 0 && block_idx < 7)
-  block_sector_t sector = inode->i_sectors[block_idx];
-  if (sector < 0) 
+  ASSERT (block_idx >= 0 && block_idx < DIRECT_SECTORS);
+  block_sector_t file_data_sector = inode->i_sectors[block_idx];
+  if (file_data_sector < 0) 
     return INODE_ERROR;
-  return found_blockindex; 
+  return file_data_sector; 
 }
 
 /* Runs inode fileblock lookup algorithm for large files. */
-static int large_indexlookup(struct inode *inode, int block_idx)
+static block_sector_t
+large_lookup (struct inode *inode, int block_idx)
 {
-  ASSERT (block_idx > 7);
-  int ind_or_doubind = block_idx / BLOCKNUMS_PER_INDFILE; // the address of the index we are looking for in the inode member
-  int index_in_block = block_idx % BLOCKNUMS_PER_INDFILE; // index of the final block number in its file block
-  int found_blockindex; 
-  if(ind_or_doubind < 7)
-    found_blockindex = get_index_in_fileblock(fs, inp->i_addr[ind_or_doubind], index_in_block);
-  else // doubly indirect block search
+  int indirect_idx = block_idx / BLOCKNUMS_PER_IND;
+  int indirect_ofs;
+  block_sector_t file_data_sector; 
+  if (indirect_idx < DOUBIND_SECTOR)
     {
-      int first_index = get_index_in_fileblock(fs, inp->i_addr[7], ind_or_doubind - 7);
-      found_blockindex = get_index_in_fileblock(fs, first_index, index_in_block);
+      sector_ofs = block_idx % BLOCKNUMS_PER_IND;
+      file_data_sector = lookup_in_sector (fs, inode->i_addr[indirect_idx], indirect_ofs);
     }
-  return found_blockindex;
+  else
+    {
+      indirect_ofs = (indirect_idx - DOUBIND_SECTOR) / BLOCKNUMS_PER_IND;
+      int dindirect_ofs = (indirect_idx - DOUBIND_SECTOR) % BLOCKNUMS_PER_IND;
+      block_sector_t dindirect_idx = lookup_in_sector (fs, inode->i_addr[7], indirect_ofs);
+      file_data_sector = lookup_in_sector (fs, dindirect_idx, dindirect_ofs);
+    }
+  return file_data_sector;
+}
+
+/* Searches for a sector in an indirect sector. */
+static block_sector_t
+lookup_in_sector (block_sector_t file_data_sector, int sector_ofs)
+{
+  uint16_t *cached_block;
+  if ((cached_block = cache_find_sector (file_data_sector)) != NULL)
+    return cached_block[sector_ofs]
+  uint16_t ind_file_block[BLOCKNUMS_PER_IND];
+  block_read (fs_device, fileblockNum, ind_file_block);
+  return ind_file_block[sector_ofs];
 }
 
 /* List of open inodes, so that opening a single inode twice
