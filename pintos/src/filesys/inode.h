@@ -6,12 +6,13 @@
 #include "devices/block.h"
 
 struct bitmap;
-
+struct inode;
+block_sector_t inode_byte_to_sector (struct inode *, off_t pos);
 void inode_init (void);
 bool inode_create (block_sector_t, off_t);
 struct inode *inode_open (block_sector_t);
 struct inode *inode_reopen (struct inode *);
-block_sector_t inode_get_inumber (const struct inode *);
+block_sector_t inode_lookup (struct inode *, int block_idx);
 void inode_close (struct inode *);
 void inode_remove (struct inode *);
 off_t inode_read_at (struct inode *, void *, off_t size, off_t offset);

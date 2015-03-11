@@ -8,6 +8,7 @@
 #include "threads/thread.h"
 #ifdef VM
 #include "threads/vaddr.h"
+#include "vm/frame.h"
 #include "vm/page.h"
 #endif
 #include "filesys/file.h"
@@ -22,7 +23,9 @@
 
 static bool is_valid_ptr (const void *ptr, size_t len);
 static bool is_valid_mapping (const void *ptr, size_t len);
+#ifdef VM
 static void validate_esp (void *esp);
+#endif
 static void syscall_handler (struct intr_frame *);
 static void syscall_halt (void);
 static void syscall_exit (int status);
@@ -299,53 +302,68 @@ syscall_close (int fd)
 /* Map a file into the user vaddr space. Return the mapid of the file. */
 static mapid_t syscall_mmap (int fd, void *addr) 
 {
+  /* check that addr is page aligned */
+  if ((uint32_t) addr % PGSIZE != 0)
+    return -1;
+
   size_t len = syscall_filesize (fd);
   if (len == 0)
     return -1;
-  if (((uint32_t) addr) % PGSIZE != 0)
-    return -1;
-  if (!is_valid_ptr (addr, len - 1))
-    syscall_exit (-1);
-  if (!is_valid_mapping (addr, len))
-    return -1;
+  //if (!is_valid_mapping (addr, len))
+    //return -1;
+  //if (!is_valid_ptr (addr, len - 1))
+    //syscall_exit (-1);
 
   struct thread *t = thread_current ();
   struct hash_elem *fd_entry;
   if ((fd_entry = fdt_search (&t->fd_hash, fd)) == NULL)
     return -1;
-  struct file *file_ = hash_entry (fd_entry, struct file_descriptor,
+  struct file *fp = hash_entry (fd_entry, struct file_descriptor,
                                    elem)->file_;
-  if ((uint32_t) addr % PGSIZE == 0)
-    return -1;
   
+  mapid_t mapid = (mapid_t) addr;
   size_t read_bytes = len;
-  size_t zero_bytes = 0;
   uint8_t *upage = addr;
   size_t page_no = 0;
-  while (read_bytes > 0 || zero_bytes > 0)
+
+  /* all pages allocated will recieve the virtual address 
+     passed to mmap and the mapid. */
+  while (read_bytes > 0)
     {
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;   
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
-      
       struct sp_entry *spe = page_supp_alloc (t, upage);
       spe->read_bytes = page_read_bytes;
       spe->zero_bytes = page_zero_bytes;
+      //spe->writable = fp->deny_write; 
+      spe->fp = fp;
       spe->ofs = page_no * PGSIZE;
-      spe->writable = file_->deny_write;
-      spe->fp = file_;
-      spe->location = FILESYSTEM;
+      spe->location = MAPPED;
       spe->upage = upage;
-      upage = PGSIZE; 
-      read_bytes -= PGSIZE;
+      spe->mapid = mapid;
+      upage += PGSIZE; 
+      read_bytes -= page_read_bytes;
+      page_no++;
     }
-
-  return -1;  
+  return mapid;  
 }
 
 /* Unmap a previously mapped file from the user vaddr space. */
 static void syscall_munmap (mapid_t mapid)
 {
-  return; 
+  struct thread *t = thread_current ();
+  struct sp_entry *spe;
+  while (true) 
+    {
+      spe = page_find (t->tid, (void *) mapid);
+      if (spe == NULL)
+        break;
+      if (spe->location == MAPPED) 
+        {
+          list_remove (&spe->l_elem);
+          page_supp_delete (spe);
+        }
+    }
 }
 #endif
 
@@ -369,10 +387,8 @@ syscall_handler (struct intr_frame *f)
     syscall_exit (-1);
   validate_esp (f->esp);
   int syscall = *(int *) f->esp;
-#ifdef VM
   thread_current ()->saved_esp = f->esp;
-#endif
-switch (syscall)
+  switch (syscall)
     {
       /* Halt the operating system. */                   
       case SYS_HALT:
@@ -487,7 +503,7 @@ is_valid_ptr (const void *ptr, size_t len)
     return false;
 #ifdef VM
   void *curr_pg = pg_round_down (ptr);
-  struct sp_entry *curr_spe = page_find (thread_current (), curr_pg);
+  struct sp_entry *curr_spe = page_find (thread_current ()->tid, curr_pg);
   if (curr_spe == NULL)
     {
       return false;
@@ -499,13 +515,23 @@ is_valid_ptr (const void *ptr, size_t len)
   return true;
 }
 
+#ifdef VM
 /* Validate the esp in case it extends over the page. */
 static void
 validate_esp (void *esp)
 {
-  if (pagedir_get_page (thread_current ()->pagedir, esp) == NULL)
+  void *curr_pg = pg_round_down (esp);
+  struct sp_entry *curr_spe = page_find (thread_current ()->tid, curr_pg);
+  if (curr_spe == NULL)
     {
-      if (PHYS_BASE - esp > STACK_LIMIT)
+      if (PHYS_BASE - curr_pg < STACK_LIMIT)
+        {
+          curr_spe = page_supp_alloc (thread_current (), curr_pg);
+          curr_spe->writable = true;
+          curr_spe->location = UNMAPPED; 
+        }
+      else
         syscall_exit (-1);
     }
 }
+#endif

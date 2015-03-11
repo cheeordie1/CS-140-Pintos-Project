@@ -28,11 +28,14 @@ frame_init (size_t user_page_limit)
 {
   lock_init (&eviction_lock);
   lock_init (&table.ft_lock);
-  table.ft = (struct ft_entry *) calloc (user_page_limit, 
+  /* Free memory starts at 1 MB and runs to the end of RAM. */
+  uint8_t *free_start = ptov (1024 * 1024);
+  uint8_t *free_end = ptov (init_ram_pages * PGSIZE);
+  size_t free_pages = (free_end - free_start) / PGSIZE;
+  size_t user_pages = free_pages / 2; 
+  table.ft = (struct ft_entry *) calloc (user_pages, 
                                          sizeof (struct ft_entry));
-  table.used_map = bitmap_create (user_page_limit);
-  // :')
-  random_init (10);
+  table.used_map = bitmap_create (user_pages);
 }
 
 /* Obtain a frame for the page referred to by spe.
@@ -41,17 +44,11 @@ bool
 frame_obtain (struct sp_entry *spe)
 {
   bool success = true;
-  // TODO acquire shared allocator lock
   lock_acquire (&table.ft_lock);
   spe->idx = bitmap_scan_and_flip (table.used_map, 0, 1, 0);
   if (spe->idx == BITMAP_ERROR)
     {
-      //  PROBLEM 1 : how do we get the spe of the evicted frame to set shit up?
-      // TODO release shared allocator lock
-      // TODO acquire exclusive evictor lock
       spe->idx = frame_evict ();
-      // TODO release exclusive evictor lock
-      // acquire shared allocator lock :')
     }
   struct ft_entry *fte = frame_get (spe);
   if (!frame_fetch (spe))
@@ -71,7 +68,6 @@ frame_obtain (struct sp_entry *spe)
       fte->user = spe;
     } 
   lock_release (&table.ft_lock);
-  // TODO release shared allocator lock
   return success; 
 }
 
@@ -79,17 +75,14 @@ frame_obtain (struct sp_entry *spe)
 void
 frame_delete (struct sp_entry *spe)
 {
-  // TODO fix frame delete
   if (spe->idx == BITMAP_ERROR)
     return;
-  // TODO acquire shared allocator lock
   ASSERT (bitmap_test (table.used_map, spe->idx));
   pagedir_clear_page (spe->pagedir, spe->upage);
   struct ft_entry *fte = frame_get (spe);
   uint8_t *pg = (uint8_t *) fte->p_addr;
   palloc_free_page (pg);
   bitmap_reset (table.used_map, spe->idx);
-  // TODO release shared allocator lock
 }
 
 /* Retrieve a frame given an index. */
@@ -108,22 +101,8 @@ frame_get (struct sp_entry *spe)
 static size_t
 frame_evict ()
 {
-  // TODO implement eviction
-  /* stack information is read to swap slot*/
-
-  /*
-    currently, we just remove the first mother fucker in there
-    
-    if unmapped
-        goes to swap
-    
-    if it's filesys and hasn't been changed, just fuck it
-
-    if it's swappable
-        goes to swap
-  */
-  int money_money_money_mooooney = (int) random_ulong ();
-  struct ft_entry fte = table.ft[money_money_money_mooooney];
+  int random_evict = (int) random_ulong ();
+  struct ft_entry fte = table.ft[random_evict];
   switch (fte.user->location) 
     {
       case UNMAPPED:
@@ -144,7 +123,7 @@ frame_evict ()
 
 
   /* executables and code segments are read to disk*/
-  return money_money_money_mooooney; // :')
+  return random_evict; // :')
 }
 
 /* Fetches the page referred to by spe into kpage. */

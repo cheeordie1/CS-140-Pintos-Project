@@ -768,6 +768,7 @@ init_thread (struct thread *t, const char *name, int priority)
 #ifdef VM
 
   list_init (&t->spe_list);
+  t->saved_esp = NULL;
 
 #endif
 
