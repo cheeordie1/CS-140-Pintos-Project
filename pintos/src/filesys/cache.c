@@ -6,6 +6,13 @@
 #define CACHE_MAX 64
 #define CACHE_BLOCK_SZ 512
 
+enum sector_type
+  {
+    INODE = 0100,         /* Cached fileblock represents inode. */
+    DIRECTORY = 0200,     /* Cached fileblock represents dir_entries. */
+    FILE_DATA = 0400      /* Cached fileblock represents file data. */
+  };
+
 struct inode_disk;
 
 struct buffer_cache
@@ -18,7 +25,7 @@ struct cache_block
   {
     struct hash_elem elem;
     block_sector_t inode_sector;
-    char dir_name[NAME_MAX + 1];
+    enum sector_type type;
     struct inode_disk data;
   };
 
@@ -53,19 +60,16 @@ cache_cmp (const struct hash_elem *a,
 {
   struct cache_block *block_a = hash_entry (a, struct cache_block, elem);
   struct cache_block *block_b = hash_entry (b, struct cache_block, elem);
-  return (block_a->inumber < block_b->inumber) || 
-         (strcmp (block_a->name, block_b->name) < 0);
+  return (block_a->inode_sector < block_b->inode_sector);
 }
 
+/* Find inode cached in buffer_cache. 
+   Return null if not present. */
 struct inode *
-cache_find_inode (block_sector_t inode_sector, char *name)
+cache_find_inode (block_sector_t inode_sector)
 {
   struct cache_block singleton;
   singleton.inode_sector = inode_sector;
-  if (name != NULL)
-    strlcpy (singleton.dir_name, name, NAME_MAX);
-  else
-    singleton.dir_name[0] = '\0';
   struct hash_elem *cached_inode = hash_find (&cache.cache_segment, 
                                               &singleton.elem);
   if (hash_elem == NULL)
@@ -75,11 +79,21 @@ cache_find_inode (block_sector_t inode_sector, char *name)
 }
 
 /* Insert an inode into the cache based on inumber. 
-   If out of room, evict. */
+   If out of room, evict. cache_block argument must be
+   an already malloced pointer. */
 void 
 cache_insert (struct cache_block *cache_block)
 {
-  
+  if (hash_size (&cache.cache_segment) == CACHE_MAX)
+    cache_evict ();
+  hash_insert (&cache.cache_segment, &cache_block->elem);
 }
 
-
+/* Use a clock algorithm to evict from the cache. */
+void
+cache_evict ()
+{
+  // TODO implement clock eviction. Possibly store a second list
+  // element in inodes to put them in modular list
+  return;
+}
