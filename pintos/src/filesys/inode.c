@@ -10,15 +10,28 @@
 /* Identifies an inode. */
 #define INODE_MAGIC 0x494e4f44
 
+#define INODE_ERROR -1
+
 /* On-disk inode.
    Must be exactly BLOCK_SECTOR_SIZE bytes long. */
-struct inode_disk
+struct inode
   {
-    block_sector_t start;               /* First data sector. */
-    off_t length;                       /* File size in bytes. */
-    unsigned magic;                     /* Magic number. */
-    uint32_t unused[125];               /* Not used. */
+    struct list_elem elem;               /* Element in inode list. */
+    uint16_t mode;                       /* Permissions for inode. */
+    uint8_t num_link;                    /* Number of directory entries. */
+    off_t length;                        /* File size in bytes. */
+    block_sector_t i_sectors[8];         /* Sector numbers of disk locations. */
+    int open_cnt;                        /* Number of openers. */
+    bool removed;                        /* True if deleted, false otherwise. */
+    bool dir;                            /* True if directory, false otherwise. */
+    bool large;                          /* True if large block addressing. */
+    int deny_write_cnt;                  /* 0: writes ok, >0: deny writes. */
+    unsigned magic;                      /* Magic number. */
+    char unused[32];                     /* Unused space. */
   };
+
+static block_sector_t small_lookup (struct inode *inode, int block_idx);
+static int large_lookup(struct inode *inode, int block_idx);
 
 /* Returns the number of sectors to allocate for an inode SIZE
    bytes long. */
@@ -28,29 +41,60 @@ bytes_to_sectors (off_t size)
   return DIV_ROUND_UP (size, BLOCK_SECTOR_SIZE);
 }
 
-/* In-memory inode. */
-struct inode 
-  {
-    struct list_elem elem;              /* Element in inode list. */
-    block_sector_t sector;              /* Sector number of disk location. */
-    int open_cnt;                       /* Number of openers. */
-    bool removed;                       /* True if deleted, false otherwise. */
-    int deny_write_cnt;                 /* 0: writes ok, >0: deny writes. */
-    struct inode_disk data;             /* Inode content. */
-  };
-
 /* Returns the block device sector that contains byte offset POS
    within INODE.
    Returns -1 if INODE does not contain data for a byte at offset
    POS. */
-static block_sector_t
-byte_to_sector (const struct inode *inode, off_t pos) 
+block_sector_t
+inode_byte_to_sector (struct inode *inode, off_t pos) 
 {
   ASSERT (inode != NULL);
   if (pos < inode->data.length)
     return inode->data.start + pos / BLOCK_SECTOR_SIZE;
   else
-    return -1;
+    return INODE_ERROR;
+}
+
+/* Searches the inode for the index of the fileblock referred to by
+   the inode's blockNum'th file block number in its file block number
+   array. The function runs a direct index lookup on small files that 
+   use 7 or less file blocks and indirect index lookups on large files
+   that have more than 7 file blocks. Returns INODE_ERROR on error. */
+block_sector_t 
+inode_lookup (struct inode *inode, int block_idx) 
+{
+  if (inode->large) 
+    return large_lookup (inode, sector);
+  else 
+    return small_lookup (inode, sector); 
+}
+
+/* Runs inode fileblock lookup algorithm for small files. */
+static block_sector_t 
+small_lookup (struct inode *inode, int block_idx)
+{
+  ASSERT (block_idx >= 1 && block_idx < 7);
+  block_sector_t sector = inode->i_sectors[block_idx];
+  if (sector < 0) 
+    return INODE_ERROR;
+  return found_blockindex; 
+}
+
+/* Runs inode fileblock lookup algorithm for large files. */
+static int large_lookup(struct inode *inode, int block_idx)
+{
+  ASSERT (block_idx > 7);
+  int ind_or_doubind = block_idx / BLOCKNUMS_PER_INDFILE; // the address of the index we are looking for in the inode member
+  int index_in_block = block_idx % BLOCKNUMS_PER_INDFILE; // index of the final block number in its file block
+  int found_blockindex; 
+  if(ind_or_doubind < 7)
+    found_blockindex = get_index_in_fileblock(fs, inp->i_addr[ind_or_doubind], index_in_block);
+  else // doubly indirect block search
+    {
+      int first_index = get_index_in_fileblock(fs, inp->i_addr[7], ind_or_doubind - 7);
+      found_blockindex = get_index_in_fileblock(fs, first_index, index_in_block);
+    }
+  return found_blockindex;
 }
 
 /* List of open inodes, so that opening a single inode twice
@@ -148,13 +192,6 @@ inode_reopen (struct inode *inode)
   if (inode != NULL)
     inode->open_cnt++;
   return inode;
-}
-
-/* Returns INODE's inode number. */
-block_sector_t
-inode_get_inumber (const struct inode *inode)
-{
-  return inode->sector;
 }
 
 /* Closes INODE and writes it to disk.
@@ -341,5 +378,5 @@ inode_allow_write (struct inode *inode)
 off_t
 inode_length (const struct inode *inode)
 {
-  return inode->data.length;
+  return inode->length;
 }

@@ -32,10 +32,11 @@ struct relation
     int p_status;               /* Hold the parent's status. */
     int c_status;               /* Hold the child's status. */
     int w_status;               /* Hold the status of child on exit. */
-    struct lock status_lock;    /* Hold this lock to read/write status. */
+    struct lock *status_lock;   /* Hold this lock to read/write status. */
     struct list_elem elem;      /* One relationship in a list. */ 
   };
 
+struct lock fs_lock;
 
 struct file_descriptor
   {
@@ -45,11 +46,11 @@ struct file_descriptor
   };
 
 bool fdt_cmp (const struct hash_elem *a,
-                  const struct hash_elem *b,
-                  void *aux UNUSED);
+              const struct hash_elem *b,
+              void *aux UNUSED);
+void fdt_close (struct hash_elem *fd_entry, void *aux UNUSED);
 bool fdt_insert (struct hash *fdt_hash, struct file_descriptor *fdt_entry);
 unsigned fdt_hash (const struct hash_elem *e, void *aux UNUSED);
-bool fdt_remove (struct hash *fdt_hash, int fd);
 struct hash_elem *fdt_search (struct hash *fdt_hash, int fd);
 
 #endif
@@ -141,10 +142,21 @@ struct thread
     uint32_t *pagedir;                  /* Page directory. */
     struct hash fd_hash;                /* Table of all file descriptors. */
 
+<<<<<<< HEAD
     struct list children_in_r;          /* List of this thread's children threads. */
     struct relation *parent_in_r;       /* Pointer to this thread's parent thread 
                                            relationship resource. */
+=======
+    struct lock children_lock;          /* Lock that every child uses to synchronize. */
+    struct list children_in_r;          /* This thread is a parent to this relationship. */
+    struct relation *parent_in_r;       /* This thread is a child to this relationship. */
+>>>>>>> 163b3fb508b9671f40e31dd633f81709dc0e20a7
 
+#endif
+
+#ifdef VM
+    struct list spe_list;               /* List of spt entries used by this thread. */
+    void *saved_esp;                    /* Saved esp for page faults in kernel. */
 #endif
 
     /* Owned by thread.c. */

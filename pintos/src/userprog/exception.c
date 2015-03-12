@@ -4,12 +4,21 @@
 #include "userprog/gdt.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "threads/vaddr.h"
+#include "vm/frame.h"
+#include "vm/page.h"
+
+#define STACK_LIMIT 0x00800000 
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
 
 static void kill (struct intr_frame *);
 static void page_fault (struct intr_frame *);
+
+#ifdef VM
+static bool validate_on_stack (void *ptr);
+#endif
 
 /* Registers handlers for interrupts that can be caused by user
    programs.
@@ -81,11 +90,13 @@ kill (struct intr_frame *f)
      
   /* The interrupt frame's code segment value tells us where the
      exception originated. */
+
   switch (f->cs)
     {
     case SEL_UCSEG:
       /* User's code segment, so it's a user exception, as we
          expected.  Kill the user process.  */
+      thread_current ()->parent_in_r->w_status = -1;
       printf ("%s: dying due to interrupt %#04x (%s).\n",
               thread_name (), f->vec_no, intr_name (f->vec_no));
       intr_dump_frame (f);
@@ -135,7 +146,7 @@ page_fault (struct intr_frame *f)
      [IA32-v3a] 5.15 "Interrupt 14--Page Fault Exception
      (#PF)". */
   asm ("movl %%cr2, %0" : "=r" (fault_addr));
-
+  
   /* Turn interrupts back on (they were only off so that we could
      be assured of reading CR2 before it changed). */
   intr_enable ();
@@ -148,14 +159,70 @@ page_fault (struct intr_frame *f)
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
 
+#ifdef VM
+  struct thread *t = thread_current ();
+  if ((uint32_t) fault_addr < PGSIZE)
+    goto error;
+  if (user)
+    {
+      if (!is_user_vaddr (fault_addr))
+        goto error;
+      if (!validate_on_stack (f->esp))
+        goto error;
+      void *curr_pg = pg_round_down (fault_addr);
+      struct sp_entry *curr_spe = page_find (t, curr_pg);
+      if (curr_spe == NULL)
+        {
+          if (PHYS_BASE - (fault_addr) > STACK_LIMIT)
+            goto error;
+          else
+            {
+              if (fault_addr < f->esp && !write)
+                goto error;
+              curr_spe = page_supp_alloc (thread_current (), curr_pg);
+              curr_spe->writable = true;
+              curr_spe->location = UNMAPPED;
+            }
+        }
+    }
+  void *curr_pg = pg_round_down (fault_addr);
+  struct sp_entry *curr_spe = page_find (t, curr_pg);
+  /* Fetch from swap or filesys. */
+  if (frame_obtain (curr_spe))
+    return;
+#endif 
+
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
      which fault_addr refers. */
-  printf ("Page fault at %p: %s error %s page in %s context.\n",
-          fault_addr,
-          not_present ? "not present" : "rights violation",
-          write ? "writing" : "reading",
-          user ? "user" : "kernel");
-  kill (f);
+  error:
+    printf ("Page fault at %p: %s error %s page in %s context.\n",
+            fault_addr,
+            not_present ? "not present" : "rights violation",
+            write ? "writing" : "reading",
+            user ? "user" : "kernel");
+    kill (f);
 }
 
+#ifdef VM
+/* Validate that a pointer is on the stack. */
+static bool
+validate_on_stack (void *ptr)
+{
+  if (pagedir_get_page (thread_current ()->pagedir, ptr) == NULL)
+    {
+      if (PHYS_BASE - (ptr) > STACK_LIMIT)
+        return false;
+      else
+        {
+          void *curr_pg = pg_round_down (ptr);
+          struct sp_entry *curr_spe = page_supp_alloc (thread_current (),
+                                                       curr_pg);
+          curr_spe->writable = true;
+          curr_spe->location = UNMAPPED;
+          return true;
+        }
+    }
+  return true;
+}
+#endif

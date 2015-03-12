@@ -19,7 +19,9 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "threads/synch.h"
-#include "devices/timer.h"
+#ifdef VM
+#include "vm/frame.h"
+#endif
 
 #define P_RUNNING 0
 #define P_EXITED 1
@@ -54,9 +56,9 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
-  struct relation *rel = (struct relation *) malloc (sizeof (struct relation));
+  struct relation *rel = malloc (sizeof (struct relation));
   list_push_back (&thread_current ()->children_in_r, &rel->elem);
-  lock_init (&rel->status_lock);
+  rel->status_lock = &thread_current ()->children_lock;
   rel->p_status = P_RUNNING;
   rel->c_status = P_LOADING;
   rel->w_status = -1;
@@ -66,19 +68,16 @@ process_execute (const char *file_name)
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (file_name, PRI_DEFAULT, start_process, &process_args);
   rel->c_id = tid;
-  while (!lock_try_acquire (&rel->status_lock))
-      thread_yield ();
+  lock_acquire (rel->status_lock);
   while (rel->c_status == P_LOADING)
     {
-      lock_release (&rel->status_lock);
-      while (!lock_try_acquire (&rel->status_lock))
-          thread_yield ();
+      lock_release (rel->status_lock);
+      thread_yield ();
+      lock_acquire (rel->status_lock);
     }
   if (rel->c_status == P_EXITED)
-    tid = TID_ERROR;
-  lock_release (&rel->status_lock);
-  if (tid == TID_ERROR)
-    palloc_free_page (fn_copy);
+    tid = rel->c_id;
+  lock_release (rel->status_lock);
   return tid;
 }
 
@@ -102,20 +101,24 @@ start_process (void *process_args)
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
+
+  lock_acquire (&fs_lock);
   success = load (file_name, cmdline, &if_.eip, &if_.esp);
+  lock_release (&fs_lock);
+
+  palloc_free_page (file_name);
 
   /* If load failed, quit. */
-  palloc_free_page (file_name);
-  while (!lock_try_acquire (&t->parent_in_r->status_lock))
-    thread_yield ();
+  lock_acquire (t->parent_in_r->status_lock);
   if (!success)
     {
       t->parent_in_r->c_status = P_EXITED;
-      lock_release (&t->parent_in_r->status_lock);
+      t->parent_in_r->c_id = TID_ERROR;
+      lock_release (t->parent_in_r->status_lock);
       thread_exit ();
     }
   t->parent_in_r->c_status = P_RUNNING;
-  lock_release (&t->parent_in_r->status_lock); 
+  lock_release (t->parent_in_r->status_lock); 
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -139,8 +142,9 @@ start_process (void *process_args)
 int
 process_wait (tid_t child_tid) 
 {
+  bool success = false;
   struct thread *t = thread_current ();
-  struct relation *rel = NULL;
+  struct relation *rel;
   struct list_elem *rel_iter;
   bool success;
   /* Find the relation with the tid. */ 
@@ -160,17 +164,21 @@ process_wait (tid_t child_tid)
     return -1;
 
   /* Wait for the child to exit. */
-  while (!lock_try_acquire (&rel->status_lock))
-    thread_yield ();
+  lock_acquire (rel->status_lock);
   while (rel->c_status == P_RUNNING)
     {
-      lock_release (&rel->status_lock);
-      while (!lock_try_acquire (&rel->status_lock))
-        thread_yield ();
+      lock_release (rel->status_lock);
+      thread_yield ();
+      lock_acquire (rel->status_lock);
     }
   int status = rel->w_status;
   list_remove (&rel->elem);
+<<<<<<< HEAD
   //free (rel);
+=======
+  lock_release (rel->status_lock);
+  free (rel);
+>>>>>>> 163b3fb508b9671f40e31dd633f81709dc0e20a7
   return status;
 }
 
@@ -179,29 +187,34 @@ void
 process_exit (void)
 {
   struct thread *cur = thread_current ();
-  struct relation *rel = NULL;
-  struct list_elem *rel_iter;
   uint32_t *pd;
 
   printf ("%s: exit(%d)\n", cur->exec_name, cur->parent_in_r->w_status);
 
   if (cur->exec)
-    file_close (cur->exec);
+    {
+      lock_acquire (&fs_lock);
+      file_close (cur->exec);
+      lock_release (&fs_lock);
+    }
   if (cur->exec_name)
     free (cur->exec_name);
 
   /* Cut ties with parent. */
   if (cur->parent_in_r != NULL)
     {
-      while (!lock_try_acquire (&cur->parent_in_r->status_lock))
-        thread_yield ();
+      lock_acquire (cur->parent_in_r->status_lock);
       cur->parent_in_r->c_status = P_EXITED;
       if (cur->parent_in_r->p_status == P_EXITED)
-        free (cur->parent_in_r);
+        {
+          lock_release (cur->parent_in_r->status_lock);
+          free (cur->parent_in_r);
+        }
       else
-        lock_release (&cur->parent_in_r->status_lock);
+        lock_release (cur->parent_in_r->status_lock);
     }
 
+<<<<<<< HEAD
    /* Orphan all children. */
    rel_iter = list_begin (&cur->children_in_r);
    while (rel_iter != list_end (&cur->children_in_r))
@@ -223,10 +236,41 @@ process_exit (void)
            lock_release (&rel->status_lock);
          }
      }
+=======
+  /* Orphan all children. */
+  struct list_elem *rel_iter;
+  while (!list_empty (&cur->children_in_r))
+    {
+      rel_iter = list_begin (&cur->children_in_r);
+      struct relation *rel = list_entry (rel_iter, struct relation, elem);
+      lock_acquire (rel->status_lock);
+      rel->p_status = P_EXITED;
+      list_remove (&rel->elem);
+      if (rel->c_status == P_EXITED)
+        {
+          lock_release (rel->status_lock);
+          free (rel);
+        }
+      else
+        lock_release (rel->status_lock);
+    }
+>>>>>>> 163b3fb508b9671f40e31dd633f81709dc0e20a7
  
   /* Close all fds in fdt. */
-   
- 
+  lock_acquire (&fs_lock);
+  hash_destroy (&cur->fd_hash, fdt_close);
+  lock_release (&fs_lock);
+
+  /* Release all locks. */
+  struct list_elem *del_entry;
+  while (!list_empty (&cur->acquired_locks))
+    {
+      del_entry = list_begin (&cur->acquired_locks);
+      struct lock *del_lock = list_entry (del_entry,
+                                          struct lock,
+                                          lock_list_elem);
+      lock_release (del_lock);
+    }
  
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -242,6 +286,9 @@ process_exit (void)
          that's been freed (and cleared). */
       cur->pagedir = NULL;
       pagedir_activate (NULL);
+      #ifdef VM
+        page_supp_destroy (cur);
+      #endif
       pagedir_destroy (pd);
     }
 }
@@ -348,13 +395,17 @@ load (const char *file_name, char *cmdline, void (**eip) (void), void **esp)
   bool success = false;
   int i;
 
+  hash_init (&t->fd_hash, fdt_hash, fdt_cmp, NULL);
+
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
   if (t->pagedir == NULL) 
     goto done;
   process_activate ();
 
-  hash_init (&t->fd_hash, fdt_hash, fdt_cmp, NULL);
+  /* Copy file name into TCB. */
+  t->exec_name = malloc (strnlen (file_name, PGSIZE - 1) + 1);
+  strlcpy (t->exec_name, file_name, PGSIZE - 1); 
 
   /* Open executable file. */
   file = filesys_open (file_name);
@@ -364,8 +415,6 @@ load (const char *file_name, char *cmdline, void (**eip) (void), void **esp)
       goto done; 
     }
   t->exec = file;
-  t->exec_name = malloc (strnlen (file_name, PGSIZE) + 1);
-  strlcpy (t->exec_name, file_name, PGSIZE); 
 
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
@@ -382,7 +431,6 @@ load (const char *file_name, char *cmdline, void (**eip) (void), void **esp)
 
   /* Set Thread state on current executable running. */
   file_deny_write (file);
-
 
   /* Read program headers. */
   file_ofs = ehdr.e_phoff;
@@ -445,8 +493,8 @@ load (const char *file_name, char *cmdline, void (**eip) (void), void **esp)
 
   /* Set up stack. */
   if (!setup_stack (esp))
-    goto done;
-  
+      goto done;
+
   /* Push stack values */
   push_stack_args (file_name, cmdline, esp);
 
@@ -460,7 +508,9 @@ load (const char *file_name, char *cmdline, void (**eip) (void), void **esp)
   return success;
 }
 
+#ifndef VM
 static bool install_page (void *upage, void *kpage, bool writable);
+#endif
 
 /* Checks whether PHDR describes a valid, loadable segment in
    FILE and returns true if so, false otherwise. */
@@ -487,7 +537,7 @@ validate_segment (const struct Elf32_Phdr *phdr, struct file *file)
      user address space range. */
   if (!is_user_vaddr ((void *) phdr->p_vaddr))
     return false;
-  if (!is_user_vaddr ((void *) (phdr->p_vaddr + phdr->p_memsz)))
+  if (!is_user_vaddr ((void *) ((char *)phdr->p_vaddr + phdr->p_memsz)))
     return false;
 
   /* The region cannot "wrap around" across the kernel virtual
@@ -528,7 +578,11 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT ((read_bytes + zero_bytes) % PGSIZE == 0);
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
-
+  
+  #ifdef VM
+    struct thread *t = thread_current ();
+    size_t page_no = 0;
+  #endif
   file_seek (file, ofs);
   while (read_bytes > 0 || zero_bytes > 0) 
     {
@@ -539,25 +593,36 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
       /* Get a page of memory. */
-      uint8_t *kpage = palloc_get_page (PAL_USER);
-      if (kpage == NULL)
-        return false;
+      #ifdef VM
+        struct sp_entry *spe = page_supp_alloc (t, upage);
+        spe->read_bytes = page_read_bytes;
+        spe->zero_bytes = page_zero_bytes;
+        spe->ofs = ofs + page_no * PGSIZE;
+        spe->writable = writable;
+        spe->fp = file;
+        spe->location = FILESYSTEM;
+        spe->upage = upage;
+        page_no++;
+      #else
+        uint8_t *kpage = palloc_get_page (PAL_USER);
+        if (kpage == NULL)
+          return false;
 
-      /* Load this page. */
-      if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
-        {
-          palloc_free_page (kpage);
-          return false; 
-        }
-      memset (kpage + page_read_bytes, 0, page_zero_bytes);
+        /* Load this page. */
+        if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
+          {
+            palloc_free_page (kpage);
+            return false; 
+          }
+        memset (kpage + page_read_bytes, 0, page_zero_bytes);
 
-      /* Add the page to the process's address space. */
-      if (!install_page (upage, kpage, writable)) 
-        {
-          palloc_free_page (kpage);
-          return false; 
-        }
-
+        /* Add the page to the process's address space. */
+        if (!install_page (upage, kpage, writable)) 
+          {
+            palloc_free_page (kpage);
+            return false; 
+          }
+      #endif
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
@@ -571,18 +636,30 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 static bool
 setup_stack (void **esp) 
 {
-  uint8_t *kpage;
   bool success = false;
 
-  kpage = palloc_get_page (PAL_USER | PAL_ZERO);
-  if (kpage != NULL) 
-    {
-      success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
-      if (success)
-        *esp = PHYS_BASE;
-      else
-        palloc_free_page (kpage);
-    }
+  #ifdef VM
+    struct sp_entry *spe;
+    spe = page_supp_alloc (thread_current (), (uint8_t *) PHYS_BASE - PGSIZE);
+    spe->writable = true;
+    spe->location = UNMAPPED;
+    success = frame_obtain (spe);
+    if (success)
+      *esp = PHYS_BASE;
+    else
+      page_supp_delete (spe);
+  #else
+    uint8_t *kpage;
+    kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+    if (kpage != NULL) 
+      {
+        success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
+        if (success)
+          *esp = PHYS_BASE;
+        else
+          palloc_free_page (kpage);
+      }
+  #endif
   return success;
 }
 
@@ -608,7 +685,7 @@ push_stack_args (const char *file_name, char *cmdline, void **esp)
   push (esp, 0, sizeof (void *));
 }
 
-/* Push a memory onto the stack. */
+/* Push memory onto the stack. */
 void
 push (void **esp, void *adr, size_t num_bytes)
 {
@@ -636,22 +713,24 @@ parse_cmd_ln (char *cmdline, void **esp)
   return count;
 }
 
-/* Adds a mapping from user virtual address UPAGE to kernel
-   virtual address KPAGE to the page table.
-   If WRITABLE is true, the user process may modify the page;
+#ifndef VM
+/* adds a mapping from user virtual address upage to kernel
+   virtual address kpage to the page table.
+   if writable is true, the user process may modify the page;
    otherwise, it is read-only.
-   UPAGE must not already be mapped.
-   KPAGE should probably be a page obtained from the user pool
+   upage must not already be mapped.
+   kpage should probably be a page obtained from the user pool
    with palloc_get_page().
-   Returns true on success, false if UPAGE is already mapped or
+   returns true on success, false if upage is already mapped or
    if memory allocation fails. */
 static bool
 install_page (void *upage, void *kpage, bool writable)
 {
   struct thread *t = thread_current ();
 
-  /* Verify that there's not already a page at that virtual
+  /* verify that there's not already a page at that virtual
      address, then map our page there. */
   return (pagedir_get_page (t->pagedir, upage) == NULL
           && pagedir_set_page (t->pagedir, upage, kpage, writable));
 }
+#endif

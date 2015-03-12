@@ -254,9 +254,9 @@ lock_acquire (struct lock *lock)
       t->waiting_for_tlock = lock->holder;
       if (current_priority > lock->holder->priority && !thread_mlfqs)
         lock_donate (lock, current_priority);
-      intr_set_level (old_level);
       sema_down (&lock->semaphore);
       give_lock (lock, t);
+      intr_set_level (old_level);
     }
 }
 

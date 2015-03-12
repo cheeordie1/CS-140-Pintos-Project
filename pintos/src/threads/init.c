@@ -31,6 +31,11 @@
 #else
 #include "tests/threads/tests.h"
 #endif
+#ifdef VM
+#include "vm/frame.h"
+#include "vm/page.h"
+#include "vm/swap.h"
+#endif
 #ifdef FILESYS
 #include "devices/block.h"
 #include "devices/ide.h"
@@ -99,6 +104,12 @@ main (void)
   malloc_init ();
   paging_init ();
 
+#ifdef VM
+  /* Initialize virtual memory paging. */
+  frame_init (766);
+  page_supp_init ();
+#endif
+
   /* Segmentation. */
 #ifdef USERPROG
   tss_init ();
@@ -127,6 +138,10 @@ main (void)
   filesys_init (format_filesys);
 #endif
 
+#ifdef VM
+  swap_init ();
+#endif
+
   printf ("Boot complete.\n");
   
   /* Run actions specified on kernel command line. */
@@ -136,7 +151,7 @@ main (void)
   shutdown ();
   thread_exit ();
 }
-
+
 /* Clear the "BSS", a segment that should be initialized to
    zeros.  It isn't actually stored on disk or zeroed by the
    kernel loader, so we have to zero it ourselves.
@@ -273,7 +288,6 @@ parse_options (char **argv)
      for reproducibility.  To fix this, give the "-r" option to
      the pintos script to request real-time execution. */
   random_init (rtc_get_time ());
-  
   return argv;
 }
 
