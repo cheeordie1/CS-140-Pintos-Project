@@ -14,14 +14,15 @@
 #define DIRECT_SECTORS 8
 #define DOUBIND_SECTOR 7
 #define BLOCKNUMS_PER_IND 256
+#define INODES_PER_SECTOR 16
+#define INODE_SIZE 32
+#define PERCENT_INODES 1 / 100
 
 /* On-disk inode.
-   Must be exactly BLOCK_SECTOR_SIZE bytes long. */
-struct inode_disk
+   Must be INODE_SIZE bytes long. */
+struct inode
   {
     struct list_elem elem;               /* Element in inode list. */
-    uint16_t mode;                       /* Permissions for inode. */
-    uint8_t num_link;                    /* Number of directory entries. */
     off_t length;                        /* File size in bytes. */
     block_sector_t i_sectors[8];         /* Sector numbers of disk locations. */
     int open_cnt;                        /* Number of openers. */
@@ -30,7 +31,7 @@ struct inode_disk
     bool large;                          /* True if large block addressing.  */
     int deny_write_cnt;                  /* 0: writes ok, >0: deny writes. */
     unsigned magic;                      /* Magic number. */
-    char unused[32];                     /* Unused space. */
+    char unused[8];                      /* Unused bytes to align to 32 byte inode. */
   };
 
 static block_sector_t small_lookup (struct inode *inode, int block_idx);
@@ -38,24 +39,16 @@ static block_sector_t large_lookup (struct inode *inode, int block_idx);
 static block_sector_t lookup_in_sector (block_sector_t file_data_sector,
                                         int sector_ofs);
 
-/* Returns the number of sectors to allocate for an inode SIZE
-   bytes long. */
-static inline size_t
-bytes_to_sectors (off_t size)
-{
-  return DIV_ROUND_UP (size, BLOCK_SECTOR_SIZE);
-}
-
-/* Returns the block device sector that contains byte offset POS
-   within INODE.
+/* Returns the inode-relative block device sector that contains byte
+   offset POS within INODE.
    Returns -1 if INODE does not contain data for a byte at offset
    POS. */
 block_sector_t
-inode_byte_to_sector (struct inode *inode, off_t pos) 
+inode_byte_to_block_idx (struct inode *inode, off_t pos) 
 {
   ASSERT (inode != NULL);
-  if (pos < inode->data.length)
-    return inode->data.start + pos / BLOCK_SECTOR_SIZE;
+  if (pos < inode->length)
+    return pos / BLOCK_SECTOR_SIZE;
   else
     return INODE_ERROR;
 }
@@ -111,23 +104,44 @@ large_lookup (struct inode *inode, int block_idx)
 static block_sector_t
 lookup_in_sector (block_sector_t file_data_sector, int sector_ofs)
 {
-  uint16_t *cached_block;
-  if ((cached_block = cache_find_sector (file_data_sector)) != NULL)
-    return cached_block[sector_ofs]
-  uint16_t ind_file_block[BLOCKNUMS_PER_IND];
-  block_read (fs_device, fileblockNum, ind_file_block);
-  return ind_file_block[sector_ofs];
+  uint16_t *cached_sector;
+  if ((cached_sector = cache_find_sector (file_data_sector)) != NULL)
+    return cached_sector[sector_ofs];
+  struct cache_block *cache_block = cache_insert (file_data_sector, INODE_METADATA);
+  if (cache_clock == NULL)
+    return INODE_ERROR;
+  return cached_block->data[sector_ofs];
 }
 
 /* List of open inodes, so that opening a single inode twice
    returns the same `struct inode'. */
 static struct list open_inodes;
 
+static struct free_map inode_map; 
+static struct lock inode_lock;
+
 /* Initializes the inode module. */
 void
 inode_init (void) 
 {
   list_init (&open_inodes);
+  lock_init (&inode_lock);
+  file_block_start = block_size (fs_device) * PERCENT_INODES;
+  free_map_init (&inode_map, file_block_start, INODE_MAP_INODE);
+  free_map_open (&inode_map);
+  ASSERT (free_map_set_multiple (&inode_map, 0, RESERVED_INODES));
+}
+
+/* Allocate the next available inode. 
+   Return INODE_ERROR if no inodes available. */
+block_sector_t
+inode_next_free ()
+{
+  block_sector_t sector;
+  if (free_map_allocate (&inode_map, RESERVED_INODES, 1, &sector))
+    return sector;
+  else
+    return INODE_ERROR;
 }
 
 /* Initializes an inode with LENGTH bytes of data and
@@ -136,38 +150,31 @@ inode_init (void)
    Returns true if successful.
    Returns false if memory or disk allocation fails. */
 bool
-inode_create (block_sector_t sector, off_t length)
+inode_create (block_sector_t sector, bool is_dir)
 {
-  struct inode_disk *disk_inode = NULL;
+  struct inode new_inode;
   bool success = false;
 
   ASSERT (length >= 0);
-
-  /* If this assertion fails, the inode structure is not exactly
-     one sector in size, and you should fix that. */
-  ASSERT (sizeof *disk_inode == BLOCK_SECTOR_SIZE);
-
-  disk_inode = calloc (1, sizeof *disk_inode);
-  if (disk_inode != NULL)
+  
+  ASSERT (sizeof new_inode == INODE_SIZE);
+  new_inode->removed = false;
+  new_inode->dir = is_dir;
+  new_inode->large = false;
+  new_inode->magic = INODE_MAGIC;
+  if (free_map_allocate (inode_sectors, &disk_inode->start)) 
     {
-      size_t sectors = bytes_to_sectors (length);
-      disk_inode->length = length;
-      disk_inode->magic = INODE_MAGIC;
-      if (free_map_allocate (sectors, &disk_inode->start)) 
+      block_write (fs_device, sector, disk_inode);
+      if (sectors > 0) 
         {
-          block_write (fs_device, sector, disk_inode);
-          if (sectors > 0) 
-            {
-              static char zeros[BLOCK_SECTOR_SIZE];
-              size_t i;
+          static char zeros[BLOCK_SECTOR_SIZE];
+          size_t i;
               
-              for (i = 0; i < sectors; i++) 
-                block_write (fs_device, disk_inode->start + i, zeros);
-            }
-          success = true; 
-        } 
-      free (disk_inode);
-    }
+          for (i = 0; i < sectors; i++) 
+            block_write (fs_device, disk_inode->start + i, zeros);
+        }
+      success = true; 
+    } 
   return success;
 }
 

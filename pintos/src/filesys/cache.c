@@ -6,27 +6,10 @@
 #define CACHE_MAX 64
 #define CACHE_BLOCK_SZ 512
 
-enum sector_type
-  {
-    INODE = 0100,         /* Cached fileblock represents inode. */
-    DIRECTORY = 0200,     /* Cached fileblock represents dir_entries. */
-    FILE_DATA = 0400      /* Cached fileblock represents file data. */
-  };
-
-struct inode_disk;
-
 struct buffer_cache
   {
     struct bitmap *used_blocks;
     struct hash cache_segment;
-  };
-
-struct cache_block
-  {
-    struct hash_elem elem;
-    block_sector_t inode_sector;
-    enum sector_type type;
-    struct inode_disk data;
   };
 
 static unsigned cache_hash (const struct hash_elem *e, void *aux);
@@ -66,7 +49,7 @@ cache_cmp (const struct hash_elem *a,
 /* Find file sector cached in buffer_cache. 
    Return null if not present. */
 struct void *
-cache_find_inode (block_sector_t sector)
+cache_find_sector (block_sector_t sector)
 {
   struct cache_block singleton;
   singleton.inode_sector = sector;
@@ -75,7 +58,11 @@ cache_find_inode (block_sector_t sector)
   if (hash_elem == NULL)
     return NULL;
   else
-    return &hash_entry (cached_inode, struct cache_block, elem)->data;
+    {
+      cache_block *cached_data = hash_entry (cached_inode, struct cache_block, elem);
+      cache_block->accessed = cache_block->type;
+      return &hash_entry (cached_inode, struct cache_block, elem)->data;
+    }
 }
 
 /* Insert an inode into the cache based on inumber. 

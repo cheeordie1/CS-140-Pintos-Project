@@ -9,6 +9,7 @@
 
 /* Partition that contains the file system. */
 struct block *fs_device;
+struct free_map fs_map;
 
 static void do_format (void);
 
@@ -22,12 +23,13 @@ filesys_init (bool format)
     PANIC ("No file system device found, can't initialize file system.");
 
   inode_init ();
-  free_map_init ();
+  free_map_init (&fs_map, block_size (fs_device), FREE_MAP_INODE);
 
   if (format) 
     do_format ();
 
-  free_map_open ();
+  free_map_open (&fs_map);
+  ASSERT (free_map_set_multiple (&fs_map, 0, file_block_start);
 }
 
 /* Shuts down the file system module, writing any unwritten data
@@ -35,7 +37,8 @@ filesys_init (bool format)
 void
 filesys_done (void) 
 {
-  free_map_close ();
+  inode_close ();
+  free_map_close (&fs_map);
 }
 
 /* Creates a file named NAME with the given INITIAL_SIZE.
@@ -48,8 +51,8 @@ filesys_create (const char *name, off_t initial_size)
   block_sector_t inode_sector = 0;
   struct dir *dir = dir_open_root ();
   bool success = (dir != NULL
-                  && free_map_allocate (1, &inode_sector)
-                  && inode_create (inode_sector, initial_size)
+                  && free_map_allocate (&fs_map, 1, &inode_sector)
+                  && inode_create (inode_sector)
                   && dir_add (dir, name, inode_sector));
   if (!success && inode_sector != 0) 
     free_map_release (inode_sector, 1);
@@ -60,8 +63,7 @@ filesys_create (const char *name, off_t initial_size)
 
 /* Opens the file with the given NAME.
    Returns the new file if successful or a null pointer
-   otherwise.
-   Fails if no file named NAME exists,
+   otherwise. Fails if no file named NAME exists,
    or if an internal memory allocation fails. */
 struct file *
 filesys_open (const char *name)
