@@ -298,17 +298,35 @@ inode_close_tree (struct inode *inode)
   if ((cached_inode_sector = cache_find_sector (inode->sector)) == NULL)
     cached_inode_sector = cache_fetch (inode->sector, INODE_METADATA);
   inode_disk = ((struct disk_inode *) cached_inode_sector->data) + sector_ofs;
-  num_blocks_to_delete = inode_disk->length / 10; // TODO: replace filler value. 
+  num_blocks_to_delete = bytes_to_sectors (inode_disk->length);
   lock_release (&GENGAR);
   if (inode_disk->large)
     {
+      size_t index, curr_ind_sector;
+      struct cache_block *ind_cache_block;
+      size_t curr_dind_sector;
+      struct cache_block *dind_cache_block;
+      size_t curr_data_sector;
+      for (index = 0; index < DIRECT_SECTORS; index++)
+        {
+          curr_ind_sector = inode_disk[index];
+          if ((cached_sector = cache_find_sector (curr_ind_sector)) == NULL)
+              cached_sector = cache_fetch (curr_ind_sector, INODE_METADATA);
+
+        }
       //return large_lookup (inode, block_idx);
     }
   else
     {
-      
+      size_t curr_sector;
+      for (curr_sector = 0; curr_sector < num_blocks_to_delete; curr_sector++)
+        {
+            free_map_release (&fs_map, inode_disk->i_sectors[curr_sector], 1);
+        }
     }
+    lock_release (&GENGAR);
 }
+
 
 /* Marks INODE to be deleted when it is closed by the last caller who
    has it open. */
