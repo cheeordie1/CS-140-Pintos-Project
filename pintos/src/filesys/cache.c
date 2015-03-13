@@ -8,40 +8,28 @@
 #define EVICT_START 0
 #define CURSOR_START 17
 
-
-struct inode_disk;
-
 struct buffer_cache
   {
-    struct bitmap *used_blocks;
-    struct hash cache_segment;
-    struct cache_block *used_sectors[CACHE_MAX];
-    int cursor;                                  /* Keep track of clock hand */
-    int evicting_hand; 
-  };
-
-struct cache_block
-  {
-    struct hash_elem elem;
-    block_sector_t sector;
-    enum sector_type type;
-    char data[BLOCK_SECTOR_SIZE];
-    char accessed; /* For reads or writes */
-    bool in_use;
-    bool dirty; /* For writes only */
+    struct bitmap *used_blocks;                  /* Free cache blocks. */
+    struct hash cache_segment;                   /* Hash that holds data. */
+    struct cache_block cache_frames[CACHE_MAX];  /* Blocks of cached data. */
+    size_t cursor;                                  /* Keep track of clock hand */
+    size_t evicting_hand;                           /* Hand for eviction. */
   };
 
 static unsigned cache_hash (const struct hash_elem *e, void *aux);
 static bool cache_cmp (const struct hash_elem *a,
                        const struct hash_elem *b,
                        void *aux);
+static size_t cache_evict (void);
 
 static struct buffer_cache cache;
 
 void
 cache_init ()
 {
-  lock_init (&cache_lock);
+  slock_init (&general_eviction_lock);
+  lock_init (&GENGAR);
   cache.used_blocks = bitmap_create (CACHE_BLOCKS);
   cache.cache_segment = hash_init (&cache_segment, cache_hash, 
                                    cache_cmp, NULL);
@@ -67,80 +55,89 @@ cache_cmp (const struct hash_elem *a,
   return (block_a->sector < block_b->sector);
 }
 
-/* Find inode cached in buffer_cache. 
+/* Find file sector cached in buffer_cache. 
    Return null if not present. */
-struct inode *
-cache_find_inode (block_sector_t sector)
+struct cache_block *
+cache_find_sector (block_sector_t sector)
 {
   struct cache_block singleton;
-  singleton.sector = sector;
+  singleton.inode_sector = sector;
   struct hash_elem *cached_inode = hash_find (&cache.cache_segment, 
                                               &singleton.elem);
   if (hash_elem == NULL)
     return NULL;
   else
-    return &hash_entry (cached_inode, struct cache_block, elem)->data;
+    {
+      struct cache_block *cached_data = hash_entry (cached_inode, 
+                                        struct cache_block, elem);
+      cached_data->accessed = cached_data->type;
+      return cached_data;
+    }
 }
 
 /* Insert an inode into the cache based on inumber. 
    If out of room, evict. cache_block argument must be
    an already malloced pointer. */
 struct cache_block * 
-cache_insert (enum sector_type type, block_sector_t sector)
-{
+cache_fetch (block_sector_t sector, enum sector_type type)
+{ 
   struct cache_block *cache_block;
-  cache_block = calloc (1, sizeof (struct cache_block));
+  size_t pos = bitmap_scan_and_flip (cache.used_blocks, 0, 1, false);
+  if (pos == BITMAP_ERROR)
+    pos = cache_evict ();
+  cache_block = &cache.cache_frames[pos];
   cache_block->type = type;
   cache_block->accessed = type;
   cache_block->sector = sector;
-  cache_block->in_use = true;
-  block_read (fs_device, cache_block->sector, cache_block->data);
-  int pos = hash_size (&cache.cache_segment);
-  if (pos == CACHE_MAX)
-    pos = cache_evict ();
+  cache_block->removed = false;
+  cache_block->dirty = false;
   hash_insert (&cache.cache_segment, &cache_block->elem);
-  cache.used_sectors[pos] = cache_block;
-
-  return cache_block;
+  block_read (fs_device, cache_block->sector, cache_block->data);
+  return cache_block; 
 }
 
 /* Removes a cached block from the cache table*/
 void
 cache_delete (struct cache_block *cache_block) 
 {
+  if (cache_block->removed)
+    return;
+  cache_block->removed = true;
   hash_delete (&cache.cache_segment, cache_block->elem);
   if (cache_block->dirty)
-      block_write (fs_device, cache_block->sector, cache_block->data);
-  free (cache_block);
+    block_write (fs_device, cache_block->sector, cache_block->data);
 }
 
+/* Flush all data from cache to filesystem, deleting cache. */
 void
-cache_write_all (void)
+cache_flush (void)
 {
-  // loop through array checking dirty bits
-  //should be called by some thread
+  while (!hash_empty (&cache.cache_segment))
+    {
+      struct hash_elem *hashed_block = hash_first (&cache.cache_segment);
+      struct cache_block *delete_block = hash_entry (hashed_block, 
+                                                     struct cache_block, elem);
+      cache_delete (delete_block);
+    }
 }
 
 /* Use a two hand clock algorithm to evict from the cache. */
-int
-cache_evict ()
+static size_t
+cache_evict (void)
 {
   while (true)
     {
-      struct cache_block *cache_block = cache.used_sectors[cache.cursor];
-      cache_block->accessed--;
+      struct cache_block *cache_block = cache.cache_frames[cache.cursor];
+      if (cache_block->accessed > 0)
+        cache_block->accessed--;
        
-      cache_block = cache.used_sectors[cache.evicting_hand];
-      if (!cache_block->in_use || cache_block->accessed == 0)
+      cache_block = cache.cache_frames[cache.evicting_hand];
+      if (cache_block->removed || cache_block->accessed == 0)
         {
           cache_delete (cache_block);
           return cache.evicting_hand;
         }
-      cache.cursor = (++cache.cursor) % CACHE_MAX;
-      cache.evicting_hand = (++cache.evicting_hand) % CACHE_MAX;
+      cache.cursor = (++(cache.cursor)) % CACHE_MAX;
+      cache.evicting_hand = (++(cache.evicting_hand)) % CACHE_MAX;
     }
-  // TODO implement clock eviction. Possibly store a second list
-  // element in inodes to put them in modular list
-
-  return;
 }

@@ -7,8 +7,15 @@
 #include "filesys/inode.h"
 #include "filesys/directory.h"
 
+#define PERCENT_INODES 1 / 100
+
 /* Partition that contains the file system. */
 struct block *fs_device;
+struct free_map fs_map;
+struct free_map inode_map;
+
+/* First sector of non-inode data */
+block_size_t file_block_start;
 
 static void do_format (void);
 
@@ -21,13 +28,18 @@ filesys_init (bool format)
   if (fs_device == NULL)
     PANIC ("No file system device found, can't initialize file system.");
 
+  file_block_start = block_size (fs_device) * PERCENT_INODES;
   inode_init ();
-  free_map_init ();
-
+  free_map_init (&inode_map, file_block_start, INODE_MAP_INODE);
+  free_map_init (&fs_map, block_size (fs_device), FREE_MAP_INODE);
+  
   if (format) 
     do_format ();
 
-  free_map_open ();
+  free_map_open (&inode_map);
+  free_map_open (&fs_map);
+  ASSERT (free_map_set_multiple (&inode_map, 0, RESERVED_INODES);
+  ASSERT (free_map_set_multiple (&fs_map, 0, file_block_start);
 }
 
 /* Shuts down the file system module, writing any unwritten data
@@ -35,9 +47,10 @@ filesys_init (bool format)
 void
 filesys_done (void) 
 {
-  free_map_close ();
+  free_map_close (&fs_map);
+  free_map_close (&inode_map);
 }
-
+
 /* Creates a file named NAME with the given INITIAL_SIZE.
    Returns true if successful, false otherwise.
    Fails if a file named NAME already exists,
@@ -45,14 +58,15 @@ filesys_done (void)
 bool
 filesys_create (const char *name, off_t initial_size) 
 {
-  block_sector_t inode_sector = 0;
+  block_sector_t inode_sector = INODE_ERROR;
   struct dir *dir = dir_open_root ();
   bool success = (dir != NULL
-                  && free_map_allocate (1, &inode_sector)
-                  && inode_create (inode_sector, initial_size)
+                  && free_map_allocate (&inode_map, RESERVED_INODES,
+                                        1, &inode_sector)
+                  && inode_create (inode_sector)
                   && dir_add (dir, name, inode_sector));
-  if (!success && inode_sector != 0) 
-    free_map_release (inode_sector, 1);
+  if (!success && inode_sector != INODE_ERROR) 
+    free_map_release (&inode_map, inode_sector, 1);
   dir_close (dir);
 
   return success;
@@ -60,8 +74,7 @@ filesys_create (const char *name, off_t initial_size)
 
 /* Opens the file with the given NAME.
    Returns the new file if successful or a null pointer
-   otherwise.
-   Fails if no file named NAME exists,
+   otherwise. Fails if no file named NAME exists,
    or if an internal memory allocation fails. */
 struct file *
 filesys_open (const char *name)
@@ -95,9 +108,11 @@ static void
 do_format (void)
 {
   printf ("Formatting file system...");
-  free_map_create ();
+  free_map_create (&inode_map);
+  free_map_create (&fs_map);
   if (!dir_create (ROOT_DIR_SECTOR, 16))
     PANIC ("root directory creation failed");
-  free_map_close ();
+  free_map_close (&inode_map);
+  free_map_clost (&fs_map);
   printf ("done.\n");
 }

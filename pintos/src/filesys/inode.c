@@ -9,50 +9,60 @@
 
 /* Identifies an inode. */
 #define INODE_MAGIC 0x494e4f44
-
 #define INODE_ERROR -1
+
+#define DIRECT_SECTORS 8
+#define DOUBIND_SECTOR 7
+#define BLOCKNUMS_PER_IND 256
+#define INODES_PER_SECTOR 16
+#define INODE_SIZE 32
+#define PERCENT_INODES 1 / 100
 
 /* On-disk inode.
    Must be exactly BLOCK_SECTOR_SIZE bytes long. */
 struct inode
   {
     struct list_elem elem;               /* Element in inode list. */
-    uint16_t mode;                       /* Permissions for inode. */
-    uint8_t num_link;                    /* Number of directory entries. */
     off_t length;                        /* File size in bytes. */
     block_sector_t i_sectors[8];         /* Sector numbers of disk locations. */
     int open_cnt;                        /* Number of openers. */
     bool removed;                        /* True if deleted, false otherwise. */
     bool dir;                            /* True if directory, false otherwise. */
-    bool large;                          /* True if large block addressing. */
+    bool large;                          /* True if large block addressing.  */
     int deny_write_cnt;                  /* 0: writes ok, >0: deny writes. */
     unsigned magic;                      /* Magic number. */
-    char unused[32];                     /* Unused space. */
+    char unused[8];                      /* Unused bytes to align to 32 byte inode. */
   };
 
+static size_t num_inodes;
+
 static block_sector_t small_lookup (struct inode *inode, int block_idx);
-static int large_lookup(struct inode *inode, int block_idx);
+static block_sector_t large_lookup (struct inode *inode, int block_idx);
+static block_sector_t lookup_in_sector (block_sector_t file_data_sector,
+                                        int sector_ofs);
 
-/* Returns the number of sectors to allocate for an inode SIZE
-   bytes long. */
-static inline size_t
-bytes_to_sectors (off_t size)
-{
-  return DIV_ROUND_UP (size, BLOCK_SECTOR_SIZE);
-}
-
-/* Returns the block device sector that contains byte offset POS
-   within INODE.
+/* Returns the inode-relative block device sector that contains byte
+   offset POS within INODE.
    Returns -1 if INODE does not contain data for a byte at offset
    POS. */
 block_sector_t
-inode_byte_to_sector (struct inode *inode, off_t pos) 
+inode_byte_to_block_idx (struct inode *inode, off_t pos) 
 {
   ASSERT (inode != NULL);
-  if (pos < inode->data.length)
-    return inode->data.start + pos / BLOCK_SECTOR_SIZE;
+  if (pos < inode->length)
+    return pos / BLOCK_SECTOR_SIZE;
   else
     return INODE_ERROR;
+}
+
+/* Returns the filesystem sector that contains the inode for the 
+   given inumber. */
+block_sector_t
+inode_sector_from_inumber (block_sector_t inumber)
+{
+  if (num_inodes <= inumber)
+    return INODE_ERROR;
+  return inumber / INODES_PER_SECTOR;
 }
 
 /* Searches the inode for the index of the fileblock referred to by
@@ -73,39 +83,63 @@ inode_lookup (struct inode *inode, int block_idx)
 static block_sector_t 
 small_lookup (struct inode *inode, int block_idx)
 {
-  ASSERT (block_idx >= 1 && block_idx < 7);
-  block_sector_t sector = inode->i_sectors[block_idx];
-  if (sector < 0) 
+  ASSERT (block_idx >= 0 && block_idx < DIRECT_SECTORS);
+  block_sector_t file_data_sector = inode->i_sectors[block_idx];
+  if (file_data_sector < 0) 
     return INODE_ERROR;
-  return found_blockindex; 
+  return file_data_sector; 
 }
 
 /* Runs inode fileblock lookup algorithm for large files. */
-static int large_lookup(struct inode *inode, int block_idx)
+static block_sector_t
+large_lookup (struct inode *inode, int block_idx)
 {
-  ASSERT (block_idx > 7);
-  int ind_or_doubind = block_idx / BLOCKNUMS_PER_INDFILE; // the address of the index we are looking for in the inode member
-  int index_in_block = block_idx % BLOCKNUMS_PER_INDFILE; // index of the final block number in its file block
-  int found_blockindex; 
-  if(ind_or_doubind < 7)
-    found_blockindex = get_index_in_fileblock(fs, inp->i_addr[ind_or_doubind], index_in_block);
-  else // doubly indirect block search
+  int indirect_idx = block_idx / BLOCKNUMS_PER_IND;
+  int indirect_ofs;
+  block_sector_t file_data_sector; 
+  if (indirect_idx < DOUBIND_SECTOR)
     {
-      int first_index = get_index_in_fileblock(fs, inp->i_addr[7], ind_or_doubind - 7);
-      found_blockindex = get_index_in_fileblock(fs, first_index, index_in_block);
+      sector_ofs = block_idx % BLOCKNUMS_PER_IND;
+      file_data_sector = lookup_in_sector (fs, inode->i_addr[indirect_idx], indirect_ofs);
     }
-  return found_blockindex;
+  else
+    {
+      indirect_ofs = (indirect_idx - DOUBIND_SECTOR) / BLOCKNUMS_PER_IND;
+      int dindirect_ofs = (indirect_idx - DOUBIND_SECTOR) % BLOCKNUMS_PER_IND;
+      block_sector_t dindirect_idx = lookup_in_sector (fs, inode->i_addr[7], indirect_ofs);
+      file_data_sector = lookup_in_sector (fs, dindirect_idx, dindirect_ofs);
+    }
+  return file_data_sector;
+}
+
+/* Searches for a sector in an indirect sector. */
+static block_sector_t
+lookup_in_sector (block_sector_t file_data_sector, int sector_ofs)
+{
+  struct cache_block *cached_sector;
+  block_sector_t ret_sector;
+  lock_acquire (&GENGAR);
+  if ((cached_sector = cache_find_sector (file_data_sector)) == NULL)
+    cache_fetch (file_data_sector, INODE_METADATA, cached_sector);
+  ret_sector = ((unit16_t *) cached_sector->data)[sector_ofs];
+  lock_release (&GENGAR);
+  return cached_sector[sector_ofs];
 }
 
 /* List of open inodes, so that opening a single inode twice
    returns the same `struct inode'. */
 static struct list open_inodes;
 
+static struct lock inode_lock;
+
 /* Initializes the inode module. */
 void
 inode_init (void) 
 {
   list_init (&open_inodes);
+  lock_init (&inode_lock);
+  file_block_start = block_size (fs_device) * PERCENT_INODES;
+  num_inodes = file_block_start * INODES_PER_SECTOR;
 }
 
 /* Initializes an inode with LENGTH bytes of data and
@@ -114,39 +148,27 @@ inode_init (void)
    Returns true if successful.
    Returns false if memory or disk allocation fails. */
 bool
-inode_create (block_sector_t sector, off_t length)
+inode_create (block_sector_t inumber, bool is_dir)
 {
-  struct inode_disk *disk_inode = NULL;
+  struct inode new_inode;
   bool success = false;
 
   ASSERT (length >= 0);
-
-  /* If this assertion fails, the inode structure is not exactly
-     one sector in size, and you should fix that. */
-  ASSERT (sizeof *disk_inode == BLOCK_SECTOR_SIZE);
-
-  disk_inode = calloc (1, sizeof *disk_inode);
-  if (disk_inode != NULL)
-    {
-      size_t sectors = bytes_to_sectors (length);
-      disk_inode->length = length;
-      disk_inode->magic = INODE_MAGIC;
-      if (free_map_allocate (sectors, &disk_inode->start)) 
-        {
-          block_write (fs_device, sector, disk_inode);
-          if (sectors > 0) 
-            {
-              static char zeros[BLOCK_SECTOR_SIZE];
-              size_t i;
-              
-              for (i = 0; i < sectors; i++) 
-                block_write (fs_device, disk_inode->start + i, zeros);
-            }
-          success = true; 
-        } 
-      free (disk_inode);
-    }
-  return success;
+  
+  ASSERT (sizeof new_inode == INODE_SIZE);
+  new_inode->removed = false;
+  new_inode->dir = is_dir;
+  new_inode->large = false;
+  new_inode->magic = INODE_MAGIC;
+  block_sector_t sector = inode_sector_from_inumber (inumber);
+  if (sector == INODE_ERROR)
+    return false;
+  struct cache_block *cached_inode_sector; 
+  lock_acquire (&GENGAR);
+  if ((*cached_inode_sector = cache_find_sector (sector)) == NULL)
+    cache_fetch (sector, INODE_DATA, caced_inode_sector);
+  lock_release (&GENGAR);
+  return true;
 }
 
 /* Reads an inode from SECTOR

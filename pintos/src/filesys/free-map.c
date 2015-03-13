@@ -5,18 +5,18 @@
 #include "filesys/filesys.h"
 #include "filesys/inode.h"
 
-static struct file *free_map_file;   /* Free map file. */
-static struct bitmap *free_map;      /* Free map, one bit per sector. */
+#define PERCENT_INODES 1 / 100
 
 /* Initializes the free map. */
 void
-free_map_init (void) 
+free_map_init (struct free_map *free_map, size_t size, size_t reserved_inode) 
 {
-  free_map = bitmap_create (block_size (fs_device));
-  if (free_map == NULL)
-    PANIC ("bitmap creation failed--file system device is too large");
-  bitmap_mark (free_map, FREE_MAP_SECTOR);
-  bitmap_mark (free_map, ROOT_DIR_SECTOR);
+  free_map->free_sectors = bitmap_create (size);
+  if (free_map->free_sectors == NULL)
+    PANIC ("bitmap creation failed-- map is too large");
+  free_map->free_map_file = NULL;
+  free_map->reserved_inode = reserved_inode;
+  lock_init (&free_map->bitmap_lock);
 }
 
 /* Allocates CNT consecutive sectors from the free map and stores
@@ -25,61 +25,81 @@ free_map_init (void)
    sectors were available or if the free_map file could not be
    written. */
 bool
-free_map_allocate (size_t cnt, block_sector_t *sectorp)
+free_map_allocate (struct free_map *free_map, size_t start,
+                   size_t cnt, block_sector_t *sectorp)
 {
-  block_sector_t sector = bitmap_scan_and_flip (free_map, 0, cnt, false);
+  lock_acquire (&free_map->bitmap_lock);
+  block_sector_t sector = bitmap_scan_and_flip (free_map->free_sectors, start, 
+                                                cnt, false);
+  lock_release (&free_map->bitmap_lock);
   if (sector != BITMAP_ERROR
-      && free_map_file != NULL
-      && !bitmap_write (free_map, free_map_file))
+      && free_map->free_map_file != NULL
+      && !bitmap_write (free_map->free_sectors, free_map->free_map_file))
     {
-      bitmap_set_multiple (free_map, sector, cnt, false); 
+      lock_acquire (&free_map->bitmap_lock);
+      bitmap_set_multiple (free_map->free_sectors, sector, cnt, false); 
       sector = BITMAP_ERROR;
+      lock_release (&free_map->bitmap_lock);
     }
   if (sector != BITMAP_ERROR)
     *sectorp = sector;
   return sector != BITMAP_ERROR;
 }
 
+/* Marks CNT consecutive sectors as true in the free map.
+   Returns true if successful, false if could not write to file. */
+void
+free_map_set_multiple (struct free_map *free_map, size_t start, size_t cnt)
+{
+  lock_acquire (&free_map->bitmap_lock);
+  bitmap_set_multiple (free_map->free_sectors, start, cnt, true);
+  lock_release (&free_map->bitmap_lock); //TODO check lock placement
+  ASSERT (free_map->free_map_file != NULL);
+  ASSERT (bitmap_write (free_map->free_sectors, free_map->free_map_file));
+}
+
 /* Makes CNT sectors starting at SECTOR available for use. */
 void
-free_map_release (block_sector_t sector, size_t cnt)
+free_map_release (struct free_map *free_map, block_sector_t sector, size_t cnt)
 {
-  ASSERT (bitmap_all (free_map, sector, cnt));
-  bitmap_set_multiple (free_map, sector, cnt, false);
-  bitmap_write (free_map, free_map_file);
+  lock_acquire (&free_map->bitmap_lock);
+  ASSERT (bitmap_all (free_map->free_sectors, sector, cnt));
+  bitmap_set_multiple (free_map->free_sectors, sector, cnt, false);
+  lock_release (&free_map->bitmap_lock);
+  bitmap_write (free_map->free_sectors, free_map->free_map_file);
 }
 
 /* Opens the free map file and reads it from disk. */
 void
-free_map_open (void) 
+free_map_open (struct free_map *free_map)
 {
-  free_map_file = file_open (inode_open (FREE_MAP_SECTOR));
-  if (free_map_file == NULL)
+  free_map->free_map_file = file_open (inode_open (free_map->reserved_inode));
+  if (free_map->free_map_file == NULL)
     PANIC ("can't open free map");
-  if (!bitmap_read (free_map, free_map_file))
+  if (!bitmap_read (free_map->free_sectors, free_map->free_map_file))
     PANIC ("can't read free map");
 }
 
 /* Writes the free map to disk and closes the free map file. */
 void
-free_map_close (void) 
+free_map_close (struct free_map *free_map) 
 {
-  file_close (free_map_file);
+  file_close (free_map->free_map_file);
 }
 
 /* Creates a new free map file on disk and writes the free map to
    it. */
 void
-free_map_create (void) 
+free_map_create (struct free_map *free_map) 
 {
   /* Create inode. */
-  if (!inode_create (FREE_MAP_SECTOR, bitmap_file_size (free_map)))
+  if (!inode_create (free_map->reserved_inode))
     PANIC ("free map creation failed");
 
   /* Write bitmap to file. */
-  free_map_file = file_open (inode_open (FREE_MAP_SECTOR));
-  if (free_map_file == NULL)
+  free_map->free_map_file = file_open (inode_open (free_map->reserved_inode));
+  if (free_map->free_map_file == NULL)
     PANIC ("can't open free map");
-  if (!bitmap_write (free_map, free_map_file))
+  if (!bitmap_write (free_map->free_sectors, free_map->free_map_file))
     PANIC ("can't write free map");
 }
