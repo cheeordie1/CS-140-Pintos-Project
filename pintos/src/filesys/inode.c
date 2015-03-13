@@ -43,7 +43,6 @@ struct inode
     int open_cnt;                        /* Number of openers. */
     bool removed;                        /* True if deleted, false otherwise. */
     int deny_write_cnt;                  /* 0: writes ok, >0: deny writes. */
-    struct disk_inode *d_node;           /* Pointer to a location in cache. */
   };
 
 static size_t file_block_start;
@@ -119,7 +118,9 @@ large_lookup (struct inode *inode, int block_idx)
     {
       indirect_ofs = (indirect_idx - DOUBIND_SECTOR) / BLOCKNUMS_PER_IND;
       int dindirect_ofs = (indirect_idx - DOUBIND_SECTOR) % BLOCKNUMS_PER_IND;
-      block_sector_t dindirect_idx = lookup_in_sector (fs, inode->i_addr[7], indirect_ofs);
+      block_sector_t dindirect_idx = lookup_in_sector (fs, 
+                                     inode->i_addr[DOUBIND_SECTOR], 
+				     indirect_ofs);
       file_data_sector = lookup_in_sector (fs, dindirect_idx, dindirect_ofs);
     }
   return file_data_sector;
@@ -133,7 +134,7 @@ lookup_in_sector (block_sector_t file_data_sector, int sector_ofs)
   block_sector_t ret_sector;
   lock_acquire (&GENGAR);
   if ((cached_sector = cache_find_sector (file_data_sector)) == NULL)
-    cache_fetch (file_data_sector, INODE_METADATA, cached_sector);
+    cached_sector = cache_fetch (file_data_sector, INODE_METADATA);
   ret_sector = ((unit16_t *) cached_sector->data)[sector_ofs];
   lock_release (&GENGAR);
   return cached_sector[sector_ofs];
@@ -163,7 +164,7 @@ inode_init (void)
 bool
 inode_create (block_sector_t inumber, bool is_dir)
 {
-  struct disk_inode *inode_disk = NULL;
+  struct disk_inode inode_disk;
   bool success = false;
 
   ASSERT (length >= 0);
@@ -171,27 +172,22 @@ inode_create (block_sector_t inumber, bool is_dir)
   /* If this assertion fails, inode algorithms will fail. */
   ASSERT (sizeof *inode_disk == BLOCK_SECTOR_SIZE);
 
-  if (inode_disk = calloc (1, sizeof *disk_inode) != NULL)
+  inode_disk->dir = is_dir;
+  inode_disk->large = false;
+  inode_disk->magic = INODE_MAGIC;
+  block_sector_t sector = inode_sector_from_inumber (inumber);
+  if (sector == INODE_ERROR)
+    success = false;  
+  else
     {
-      inode_disk->removed = false;
-      inode_disk->dir = is_dir;
-      inode_disk->large = false;
-      inode_disk->magic = INODE_MAGIC;
-      block_sector_t sector = inode_sector_from_inumber (inumber);
-      if (sector == INODE_ERROR)
-        success = false;
-      else
-        {
-          struct cache_block *cached_inode_sector; 
-          lock_acquire (&GENGAR);
-          if ((*cached_inode_sector = cache_find_sector (sector)) == NULL)
-            cache_fetch (sector, INODE_DATA, caced_inode_sector);
-	  cache_write (cached_inode_sector, inode_disk,
-	               byte_ofs_inode_sector (inumber), sizeof *inode_disk);
-          lock_release (&GENGAR);
-          success = true;
-	}
-      free (inode_disk);
+      struct cache_block *cached_inode_sector; 
+      lock_acquire (&GENGAR);
+      if ((*cached_inode_sector = cache_find_sector (sector)) == NULL)
+        cached_inode_sector = cache_fetch (sector, INODE_DATA);
+      cache_write (cached_inode_sector, inode_disk,
+                   byte_ofs_inode_sector (inumber), sizeof inode_disk);
+      lock_release (&GENGAR);
+      success = true;
     }
   return success;
 }
@@ -226,11 +222,11 @@ inode_open (block_sector_t inumber)
 
   /* Initialize. */
   list_push_front (&open_inodes, &inode->elem);
-  inode->sector = sector;
+  inode->inumber = inumber;
   inode->open_cnt = 1;
   inode->deny_write_cnt = 0;
   inode->removed = false;
-  block_read (fs_device, inode->sector, &inode->data);
+  lock_release (&inode_lock);
   return inode;
 }
 
@@ -254,6 +250,7 @@ inode_close (struct inode *inode)
     return;
 
   /* Release resources if this was the last opener. */
+  lock_acquire (&inode_lock);
   if (--inode->open_cnt == 0)
     {
       /* Remove from inode list and release lock. */
@@ -262,11 +259,9 @@ inode_close (struct inode *inode)
       /* Deallocate blocks if removed. */
       if (inode->removed) 
         {
-          free_map_release (inode->sector, 1);
-          free_map_release (inode->data.start,
-                            bytes_to_sectors (inode->data.length)); 
+	  inode_close_tree (inode->inumber);
+          free_map_release (&inode_map, inode->inumber, 1);
         }
-
       free (inode); 
     }
 }
