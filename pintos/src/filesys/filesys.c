@@ -40,7 +40,7 @@ filesys_done (void)
   inode_close ();
   free_map_close (&fs_map);
 }
-
+
 /* Creates a file named NAME with the given INITIAL_SIZE.
    Returns true if successful, false otherwise.
    Fails if a file named NAME already exists,
@@ -48,13 +48,14 @@ filesys_done (void)
 bool
 filesys_create (const char *name, off_t initial_size) 
 {
-  block_sector_t inode_sector = 0;
+  block_sector_t inode_sector = INODE_ERROR;
   struct dir *dir = dir_open_root ();
   bool success = (dir != NULL
-                  && free_map_allocate (&fs_map, 1, &inode_sector)
+                  && free_map_allocate (&inode_map, RESERVED_INODES,
+                                        1, &inode_sector)
                   && inode_create (inode_sector)
                   && dir_add (dir, name, inode_sector));
-  if (!success && inode_sector != 0) 
+  if (!success && inode_sector != INODE_ERROR) 
     free_map_release (inode_sector, 1);
   dir_close (dir);
 

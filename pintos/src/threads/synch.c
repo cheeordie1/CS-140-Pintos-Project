@@ -462,3 +462,53 @@ cond_sort_priority (struct condition *cond)
 {
   list_sort (&cond->waiters, cond_cmp, NULL);
 }
+
+/* Initialize a shared lock. */
+void slock_init (shared_lock *sl)
+{
+  lock_init (&sl->slock);
+  cond_init (&sl->cond);
+  sl->i = 0;
+}
+
+/* Acquire exclusive access to a shared lock. */
+void
+lock_acquire_exclusive (shared_lock *sl) 
+{
+  lock_acquire (&sl->slock);
+  while (sl->i != 0) 
+    cond_wait (&sl->cond, &sl->slock);
+  sl->i = -1;
+  lock_release (&sl->slock);
+}
+
+/* Acquire shared access to a shared lock. */
+void
+lock_acquire_shared (shared_lock *sl)
+{
+  lock_acquire (&sl->slock);
+  while (sl->i < 0) 
+    cond_wait (&sl->cond, &sl->slock);
+  sl->i++;
+  lock_release (&sl->slock);
+}
+
+/* Release shared access to a shared lock. */
+void
+lock_release_shared (shared_lock *sl)
+{
+  lock_acquire (&sl->slock);
+  if (!--sl->i)
+    cond_signal (&sl->cond);
+  lock_release (&sl->slock);
+}
+
+/* Release exclusive access to a shared lock. */
+void
+lock_release_exclusive (shared_lock *sl)
+{
+  lock_acquire (sl->slock);
+  sl->i = 0;
+  cond_broadcast (&sl->cond);
+  lock_release (&sl->slock);
+}

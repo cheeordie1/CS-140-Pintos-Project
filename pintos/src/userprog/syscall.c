@@ -43,6 +43,15 @@ static void syscall_close (int fd);
 static mapid_t syscall_mmap (int fd, void *addr);
 static void syscall_munmap (mapid_t mapid);
 #endif
+
+#ifdef FILESYS
+static bool syscall_chdir (const char* dir);
+static bool syscall_mkdir (const char* dir);
+static bool syscall_readdir (int fd, char* name);
+static bool syscall_isdir (int fd);
+static int syscall_inumber (int fd);
+#endif
+
 static void *syscall_arg (void *esp, int index);
 
 /* Initialize system calls. */
@@ -318,6 +327,72 @@ static void syscall_munmap (mapid_t mapid)
 {
   return; 
 }
+#endif
+
+#ifndef FILESYS
+
+/* Changes the current working directory of the process to dir, which may be
+   relative or absolute. Returns true if successful, false on failure. */
+static bool
+syscall_chdir (const char* dir)
+{
+  return false;
+}
+
+/* Creates the directory named dir, which may be relative or absolute. Returns true
+   if successful, false on failure. Fails if dir already exists or if any 
+   directory name in dir, besides the last, does not already exist. That is,
+   mkdir("/a/b/c") succeeds only if /a/b already exists and /a/b/c does	not. */
+static bool
+syscall_mkdir (const char* dir)
+{
+  return false;
+}
+
+/* Reads a directory entry from file descriptor fd, which must represent a
+   directory. If successful, stores the null-terminated file name in name,
+   which must have room for READDIR_MAX_LEN + 1 bytes, and returns true. If no
+   entries are left in the directory, returns false.*/
+static bool
+syscall_readdir (int fd, char* name)
+{
+  struct hash_elem *found_elem;
+  found_elem = fdt_search (&thread_current ()->fd_hash, fd);
+  if (found_elem == NULL)
+    return false;
+  struct file *found_fd = 
+  hash_entry (found_elem, struct file_descriptor, elem)->file_;
+  return dir_readdir (found_fd, name); 
+}
+
+/* Returns true if fd represents a directory, false if it represents an
+   ordinary file.*/
+static bool
+syscall_isdir (int fd)
+{
+  struct hash_elem *found_elem;
+  found_elem = fdt_search (&thread_current ()->fd_hash, fd);
+  if (found_elem == NULL)
+    return 0;
+  struct file *found_fd = 
+  hash_entry (found_elem, struct file_descriptor, elem)->file_;
+  return found_fd->inode->dir;
+}
+
+/* Returns the inode number of the inode associated with fd, which may
+   represent an ordinary file or a directory. */
+static int
+syscall_inumber (int fd)
+{
+  struct hash_elem *found_elem;
+  found_elem = fdt_search (&thread_current ()->fd_hash, fd);
+  if (found_elem == NULL)
+    return 0;
+  struct file *found_fd = 
+  hash_entry (found_elem, struct file_descriptor, elem)->file_;
+  return found_fd->inumber;
+}
+
 #endif
 
 /* Retrieves an argument at a given index from the stack pointer 

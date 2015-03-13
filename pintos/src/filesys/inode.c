@@ -34,6 +34,8 @@ struct inode
     char unused[8];                      /* Unused bytes to align to 32 byte inode. */
   };
 
+static size_t num_inodes;
+
 static block_sector_t small_lookup (struct inode *inode, int block_idx);
 static block_sector_t large_lookup (struct inode *inode, int block_idx);
 static block_sector_t lookup_in_sector (block_sector_t file_data_sector,
@@ -51,6 +53,16 @@ inode_byte_to_block_idx (struct inode *inode, off_t pos)
     return pos / BLOCK_SECTOR_SIZE;
   else
     return INODE_ERROR;
+}
+
+/* Returns the filesystem sector that contains the inode for the 
+   given inumber. */
+block_sector_t
+inode_sector_from_inumber (block_sector_t inumber)
+{
+  if (num_inodes <= inumber)
+    return INODE_ERROR;
+  return inumber / INODES_PER_SECTOR;
 }
 
 /* Searches the inode for the index of the fileblock referred to by
@@ -104,20 +116,20 @@ large_lookup (struct inode *inode, int block_idx)
 static block_sector_t
 lookup_in_sector (block_sector_t file_data_sector, int sector_ofs)
 {
-  uint16_t *cached_sector;
-  if ((cached_sector = cache_find_sector (file_data_sector)) != NULL)
-    return cached_sector[sector_ofs];
-  struct cache_block *cache_block = cache_insert (file_data_sector, INODE_METADATA);
-  if (cache_clock == NULL)
-    return INODE_ERROR;
-  return cached_block->data[sector_ofs];
+  struct cache_block *cached_sector;
+  block_sector_t ret_sector;
+  lock_acquire (&GENGAR);
+  if ((cached_sector = cache_find_sector (file_data_sector)) == NULL)
+    cache_fetch (file_data_sector, INODE_METADATA, cached_sector);
+  ret_sector = ((unit16_t *) cached_sector->data)[sector_ofs];
+  lock_release (&GENGAR);
+  return cached_sector[sector_ofs];
 }
 
 /* List of open inodes, so that opening a single inode twice
    returns the same `struct inode'. */
 static struct list open_inodes;
 
-static struct free_map inode_map; 
 static struct lock inode_lock;
 
 /* Initializes the inode module. */
@@ -127,21 +139,10 @@ inode_init (void)
   list_init (&open_inodes);
   lock_init (&inode_lock);
   file_block_start = block_size (fs_device) * PERCENT_INODES;
+  num_inodes = file_block_start * INODES_PER_SECTOR;
   free_map_init (&inode_map, file_block_start, INODE_MAP_INODE);
   free_map_open (&inode_map);
   ASSERT (free_map_set_multiple (&inode_map, 0, RESERVED_INODES));
-}
-
-/* Allocate the next available inode. 
-   Return INODE_ERROR if no inodes available. */
-block_sector_t
-inode_next_free ()
-{
-  block_sector_t sector;
-  if (free_map_allocate (&inode_map, RESERVED_INODES, 1, &sector))
-    return sector;
-  else
-    return INODE_ERROR;
 }
 
 /* Initializes an inode with LENGTH bytes of data and
@@ -150,7 +151,7 @@ inode_next_free ()
    Returns true if successful.
    Returns false if memory or disk allocation fails. */
 bool
-inode_create (block_sector_t sector, bool is_dir)
+inode_create (block_sector_t inumber, bool is_dir)
 {
   struct inode new_inode;
   bool success = false;
@@ -162,20 +163,15 @@ inode_create (block_sector_t sector, bool is_dir)
   new_inode->dir = is_dir;
   new_inode->large = false;
   new_inode->magic = INODE_MAGIC;
-  if (free_map_allocate (inode_sectors, &disk_inode->start)) 
-    {
-      block_write (fs_device, sector, disk_inode);
-      if (sectors > 0) 
-        {
-          static char zeros[BLOCK_SECTOR_SIZE];
-          size_t i;
-              
-          for (i = 0; i < sectors; i++) 
-            block_write (fs_device, disk_inode->start + i, zeros);
-        }
-      success = true; 
-    } 
-  return success;
+  block_sector_t sector = inode_sector_from_inumber (inumber);
+  if (sector == INODE_ERROR)
+    return false;
+  struct cache_block *cached_inode_sector; 
+  lock_acquire (&GENGAR);
+  if ((*cached_inode_sector = cache_find_sector (sector)) == NULL)
+    cache_fetch (sector, INODE_DATA, caced_inode_sector);
+  lock_release (&GENGAR);
+  return true;
 }
 
 /* Reads an inode from SECTOR

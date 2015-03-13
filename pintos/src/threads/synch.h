@@ -46,6 +46,19 @@ void cond_wait (struct condition *, struct lock *);
 void cond_signal (struct condition *, struct lock *);
 void cond_broadcast (struct condition *, struct lock *);
 
+struct shared_lock 
+  {
+    int i;                 /* Shared lockers, or -1 if exclusively locked. */
+    struct lock slock;     /* Lock that people share. */
+    struct condition cond; /* Condition variable to share. */
+  };
+
+void slock_init (shared_lock *sl);
+void lock_acquire_exclusive (shared_lock *sl);
+void lock_acquire_shared (shared_lock *sl);
+void lock_release_shared (shared_lock *sl);
+void lock_release_exclusive (shared_lock *sl);
+
 /* Optimization barrier.
 
    The compiler will not reorder operations across an

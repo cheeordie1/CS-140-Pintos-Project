@@ -5,27 +5,36 @@
 
 #define CACHE_MAX 64
 #define CACHE_BLOCK_SZ 512
+#define EVICT_START 0
+#define CURSOR_START 17
 
 struct buffer_cache
   {
-    struct bitmap *used_blocks;
-    struct hash cache_segment;
+    struct bitmap *used_blocks;                  /* Free cache blocks. */
+    struct hash cache_segment;                   /* Hash that holds data. */
+    struct cache_block cache_frames[CACHE_MAX];  /* Blocks of cached data. */
+    size_t cursor;                                  /* Keep track of clock hand */
+    size_t evicting_hand;                           /* Hand for eviction. */
   };
 
 static unsigned cache_hash (const struct hash_elem *e, void *aux);
 static bool cache_cmp (const struct hash_elem *a,
                        const struct hash_elem *b,
                        void *aux);
+static size_t cache_evict (void);
 
 static struct buffer_cache cache;
 
 void
 cache_init ()
 {
-  lock_init (&cache_lock);
+  slock_init (&general_eviction_lock);
+  lock_init (&GENGAR);
   cache.used_blocks = bitmap_create (CACHE_BLOCKS);
   cache.cache_segment = hash_init (&cache_segment, cache_hash, 
                                    cache_cmp, NULL);
+  cache.cursor = CURSOR_START;
+  cache.evicting_hand = EVICT_START;
 }
 
 /* Hash the cache block by inumber. */
@@ -48,7 +57,7 @@ cache_cmp (const struct hash_elem *a,
 
 /* Find file sector cached in buffer_cache. 
    Return null if not present. */
-struct void *
+struct cache_block *
 cache_find_sector (block_sector_t sector)
 {
   struct cache_block singleton;
@@ -59,28 +68,76 @@ cache_find_sector (block_sector_t sector)
     return NULL;
   else
     {
-      cache_block *cached_data = hash_entry (cached_inode, struct cache_block, elem);
-      cache_block->accessed = cache_block->type;
-      return &hash_entry (cached_inode, struct cache_block, elem)->data;
+      struct cache_block *cached_data = hash_entry (cached_inode, 
+                                        struct cache_block, elem);
+      cached_data->accessed = cached_data->type;
+      return cached_data;
     }
 }
 
 /* Insert an inode into the cache based on inumber. 
    If out of room, evict. cache_block argument must be
    an already malloced pointer. */
-void 
-cache_insert (struct cache_block *cache_block)
-{
-  if (hash_size (&cache.cache_segment) == CACHE_MAX)
-    cache_evict ();
+struct cache_block * 
+cache_fetch (block_sector_t sector, enum sector_type type)
+{ 
+  struct cache_block *cache_block;
+  size_t pos = bitmap_scan_and_flip (cache.used_blocks, 0, 1, false);
+  if (pos == BITMAP_ERROR)
+    pos = cache_evict ();
+  cache_block = &cache.cache_frames[pos];
+  cache_block->type = type;
+  cache_block->accessed = type;
+  cache_block->sector = sector;
+  cache_block->removed = false;
+  cache_block->dirty = false;
   hash_insert (&cache.cache_segment, &cache_block->elem);
+  block_read (fs_device, cache_block->sector, cache_block->data);
+  return cache_block; 
 }
 
-/* Use a clock algorithm to evict from the cache. */
+/* Removes a cached block from the cache table*/
 void
-cache_evict ()
+cache_delete (struct cache_block *cache_block) 
 {
-  // TODO implement clock eviction. Possibly store a second list
-  // element in inodes to put them in modular list
-  return;
+  if (cache_block->removed)
+    return;
+  cache_block->removed = true;
+  hash_delete (&cache.cache_segment, cache_block->elem);
+  if (cache_block->dirty)
+    block_write (fs_device, cache_block->sector, cache_block->data);
+}
+
+/* Flush all data from cache to filesystem, deleting cache. */
+void
+cache_flush (void)
+{
+  while (!hash_empty (&cache.cache_segment))
+    {
+      struct hash_elem *hashed_block = hash_first (&cache.cache_segment);
+      struct cache_block *delete_block = hash_entry (hashed_block, 
+                                                     struct cache_block, elem);
+      cache_delete (delete_block);
+    }
+}
+
+/* Use a two hand clock algorithm to evict from the cache. */
+static size_t
+cache_evict (void)
+{
+  while (true)
+    {
+      struct cache_block *cache_block = cache.cache_frames[cache.cursor];
+      if (cache_block->accessed > 0)
+        cache_block->accessed--;
+       
+      cache_block = cache.cache_frames[cache.evicting_hand];
+      if (cache_block->removed || cache_block->accessed == 0)
+        {
+          cache_delete (cache_block);
+          return cache.evicting_hand;
+        }
+      cache.cursor = (++(cache.cursor)) % CACHE_MAX;
+      cache.evicting_hand = (++(cache.evicting_hand)) % CACHE_MAX;
+    }
 }
