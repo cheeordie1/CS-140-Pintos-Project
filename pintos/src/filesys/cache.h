@@ -31,6 +31,7 @@ struct lock GENGAR;
 void cache_init (void);
 struct cache_block *cache_find_sector (block_sector_t);
 struct cache_block *cache_fetch (block_sector_t, enum sector_type);
+void cache_write (struct cache_block *, void *, size_t, size_t);
 void cache_delete (struct cache_block *);
 void cache_flush (void);
 

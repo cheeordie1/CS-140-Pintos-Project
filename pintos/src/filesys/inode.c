@@ -11,8 +11,8 @@
 #define INODE_MAGIC 0x494e4f44
 #define INODE_ERROR -1
 
-#define DIRECT_SECTORS 8
-#define DOUBIND_SECTOR 7
+#define DIRECT_SECTORS 6
+#define DOUBIND_SECTOR 5
 #define BLOCKNUMS_PER_IND 256
 #define INODES_PER_SECTOR 16
 #define INODE_SIZE 32
@@ -20,20 +20,33 @@
 
 /* On-disk inode.
    Must be INODE_SIZE bytes long. */
+struct disk_inode
+  {
+    off_t length;                        /* File size in bytes. */
+    block_sector_t i_sectors[6];         /* Sector numbers of disk locations. */
+    bool dir;                            /* True if directory, false otherwise. */
+    bool large;                          /* True if large block addressing.  */
+    uint16_t magic;                      /* Magic number. */
+  };
+
+static inline size_t
+byte_ofs_inode_sector (size_t inumber)
+{
+  return (inumber % INODES_PER_SECTOR) * INODE_SIZE;
+}
+
+/* In-memory inode. */
 struct inode
   {
     struct list_elem elem;               /* Element in inode list. */
-    off_t length;                        /* File size in bytes. */
-    block_sector_t i_sectors[8];         /* Sector numbers of disk locations. */
+    block_sector_t inumber;              /* Inumber that represents inode. */
     int open_cnt;                        /* Number of openers. */
     bool removed;                        /* True if deleted, false otherwise. */
-    bool dir;                            /* True if directory, false otherwise. */
-    bool large;                          /* True if large block addressing.  */
     int deny_write_cnt;                  /* 0: writes ok, >0: deny writes. */
-    unsigned magic;                      /* Magic number. */
-    char unused[8];                      /* Unused bytes to align to 32 byte inode. */
+    struct disk_inode *d_node;           /* Pointer to a location in cache. */
   };
 
+static size_t file_block_start;
 static size_t num_inodes;
 
 static block_sector_t small_lookup (struct inode *inode, int block_idx);
@@ -140,9 +153,6 @@ inode_init (void)
   lock_init (&inode_lock);
   file_block_start = block_size (fs_device) * PERCENT_INODES;
   num_inodes = file_block_start * INODES_PER_SECTOR;
-  free_map_init (&inode_map, file_block_start, INODE_MAP_INODE);
-  free_map_open (&inode_map);
-  ASSERT (free_map_set_multiple (&inode_map, 0, RESERVED_INODES));
 }
 
 /* Initializes an inode with LENGTH bytes of data and
@@ -153,44 +163,58 @@ inode_init (void)
 bool
 inode_create (block_sector_t inumber, bool is_dir)
 {
-  struct inode new_inode;
+  struct disk_inode *inode_disk = NULL;
   bool success = false;
 
   ASSERT (length >= 0);
   
-  ASSERT (sizeof new_inode == INODE_SIZE);
-  new_inode->removed = false;
-  new_inode->dir = is_dir;
-  new_inode->large = false;
-  new_inode->magic = INODE_MAGIC;
-  block_sector_t sector = inode_sector_from_inumber (inumber);
-  if (sector == INODE_ERROR)
-    return false;
-  struct cache_block *cached_inode_sector; 
-  lock_acquire (&GENGAR);
-  if ((*cached_inode_sector = cache_find_sector (sector)) == NULL)
-    cache_fetch (sector, INODE_DATA, caced_inode_sector);
-  lock_release (&GENGAR);
-  return true;
+  /* If this assertion fails, inode algorithms will fail. */
+  ASSERT (sizeof *inode_disk == BLOCK_SECTOR_SIZE);
+
+  if (inode_disk = calloc (1, sizeof *disk_inode) != NULL)
+    {
+      inode_disk->removed = false;
+      inode_disk->dir = is_dir;
+      inode_disk->large = false;
+      inode_disk->magic = INODE_MAGIC;
+      block_sector_t sector = inode_sector_from_inumber (inumber);
+      if (sector == INODE_ERROR)
+        success = false;
+      else
+        {
+          struct cache_block *cached_inode_sector; 
+          lock_acquire (&GENGAR);
+          if ((*cached_inode_sector = cache_find_sector (sector)) == NULL)
+            cache_fetch (sector, INODE_DATA, caced_inode_sector);
+	  cache_write (cached_inode_sector, inode_disk,
+	               byte_ofs_inode_sector (inumber), sizeof *inode_disk);
+          lock_release (&GENGAR);
+          success = true;
+	}
+      free (inode_disk);
+    }
+  return success;
 }
 
-/* Reads an inode from SECTOR
+/* Reads an inode referred to by its inumber
    and returns a `struct inode' that contains it.
    Returns a null pointer if memory allocation fails. */
 struct inode *
-inode_open (block_sector_t sector)
+inode_open (block_sector_t inumber)
 {
   struct list_elem *e;
   struct inode *inode;
 
   /* Check whether this inode is already open. */
+  lock_acquire (&inode_lock);
   for (e = list_begin (&open_inodes); e != list_end (&open_inodes);
        e = list_next (e)) 
     {
       inode = list_entry (e, struct inode, elem);
-      if (inode->sector == sector) 
+      if (inode->inumber == inumber) 
         {
           inode_reopen (inode);
+          lock_release (&inode_lock);
           return inode; 
         }
     }

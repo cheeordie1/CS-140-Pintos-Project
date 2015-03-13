@@ -108,6 +108,15 @@ cache_delete (struct cache_block *cache_block)
     block_write (fs_device, cache_block->sector, cache_block->data);
 }
 
+/* Writes to a cached sector, setting its dirty bool. */
+void
+cache_write (struct cache_block *cached_sector, void *buf,
+	     size_t start, size_t cnt)
+{
+  cached_sector->dirty = true;
+  memcpy (&cached_sector->data[start], buf, cnt);
+}
+
 /* Flush all data from cache to filesystem, deleting cache. */
 void
 cache_flush (void)
