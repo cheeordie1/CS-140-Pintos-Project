@@ -7,14 +7,11 @@
 #include "filesys/inode.h"
 #include "filesys/directory.h"
 
-
 #define PERCENT_INODES 1 / 100
-/* Partition that contains the file system. */
-struct block *fs_device;
-struct free_map fs_map;
 
-/* First sector in inode data */
-block_size_t file_block_start;
+/* Partition that contains the file system. */
+static struct free_map fs_map;
+
 
 static void do_format (void);
 
@@ -29,13 +26,16 @@ filesys_init (bool format)
 
   file_block_start = block_size (fs_device) * PERCENT_INODES;
   inode_init ();
+  free_map_init (&inode_map, file_block_start, INODE_MAP_INODE);
   free_map_init (&fs_map, block_size (fs_device), FREE_MAP_INODE);
-
+  
   if (format) 
     do_format ();
 
+  free_map_open (&inode_map);
   free_map_open (&fs_map);
-  ASSERT (free_map_set_multiple (&fs_map, 0, file_block_start));
+  free_map_set_multiple (&inode_map, 0, RESERVED_INODES);
+  free_map_set_multiple (&fs_map, 0, file_block_start);
 }
 
 /* Shuts down the file system module, writing any unwritten data
@@ -44,6 +44,7 @@ void
 filesys_done (void) 
 {
   free_map_close (&fs_map);
+  free_map_close (&inode_map);
 }
 
 /* Creates a file named NAME with the given INITIAL_SIZE.
@@ -58,10 +59,10 @@ filesys_create (const char *name, off_t initial_size)
   bool success = (dir != NULL
                   && free_map_allocate (&inode_map, RESERVED_INODES,
                                         1, &inode_sector)
-                  && inode_create (inode_sector)
+                  && inode_create (inode_sector, false)
                   && dir_add (dir, name, inode_sector));
   if (!success && inode_sector != INODE_ERROR) 
-    free_map_release (inode_sector, 1);
+    free_map_release (&inode_map, inode_sector, 1);
   dir_close (dir);
 
   return success;
@@ -103,9 +104,11 @@ static void
 do_format (void)
 {
   printf ("Formatting file system...");
-  free_map_create ();
-  if (!dir_create (ROOT_DIR_SECTOR, 16))
+  free_map_create (&inode_map);
+  free_map_create (&fs_map);
+  if (!dir_create (ROOT_DIR_INODE, 16))
     PANIC ("root directory creation failed");
-  free_map_close ();
+  free_map_close (&inode_map);
+  free_map_close (&fs_map);
   printf ("done.\n");
 }

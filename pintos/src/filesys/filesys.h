@@ -11,8 +11,10 @@
 #define RESERVED_INODES 3      /* Number of reserved inodes. */
 
 /* Block device that contains the file system. */
-struct block *fs_device;
-struct free_map inode_map;
+static struct block *fs_device;
+static struct free_map inode_map;
+static struct free_map fs_map;
+
 
 void filesys_init (bool format);
 void filesys_done (void);

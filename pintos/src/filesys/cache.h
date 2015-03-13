@@ -1,8 +1,8 @@
 #ifndef CACHE_H
 #define CACHE_H
+#include <hash.h>
 #include "threads/synch.h"
 #include "devices/block.h"
-
 enum sector_type
   {
     FILE_DATA = 1,       /* Cached fileblock represents file data. */
@@ -24,8 +24,6 @@ struct cache_block
   };
 
 struct shared_lock general_eviction_lock;
-// TODO PLEASE REMEMBER TO TAKE THIS OUT
-struct lock GENGAR;
 
 void cache_init (void);
 struct cache_block *cache_find_sector (block_sector_t);

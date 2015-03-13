@@ -54,7 +54,7 @@ dir_open (struct inode *inode)
 struct dir *
 dir_open_root (void)
 {
-  return dir_open (inode_open (ROOT_DIR_SECTOR));
+  return dir_open (inode_open (ROOT_DIR_INODE));
 }
 
 /* Opens and returns a new directory for the same inode as DIR.

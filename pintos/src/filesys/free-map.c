@@ -28,14 +28,18 @@ bool
 free_map_allocate (struct free_map *free_map, size_t start,
                    size_t cnt, block_sector_t *sectorp)
 {
+  lock_acquire (&free_map->bitmap_lock);
   block_sector_t sector = bitmap_scan_and_flip (free_map->free_sectors, start, 
                                                 cnt, false);
+  lock_release (&free_map->bitmap_lock);
   if (sector != BITMAP_ERROR
       && free_map->free_map_file != NULL
       && !bitmap_write (free_map->free_sectors, free_map->free_map_file))
     {
+      lock_acquire (&free_map->bitmap_lock);
       bitmap_set_multiple (free_map->free_sectors, sector, cnt, false); 
       sector = BITMAP_ERROR;
+      lock_release (&free_map->bitmap_lock);
     }
   if (sector != BITMAP_ERROR)
     *sectorp = sector;
@@ -47,18 +51,21 @@ free_map_allocate (struct free_map *free_map, size_t start,
 void
 free_map_set_multiple (struct free_map *free_map, size_t start, size_t cnt)
 {
+  lock_acquire (&free_map->bitmap_lock);
   bitmap_set_multiple (free_map->free_sectors, start, cnt, true);
-  if (free_map->free_map_file == NULL)
-    return false;
-  return bitmap_write (free_map->free_sectors, free_map->free_map_file);
+  lock_release (&free_map->bitmap_lock); //TODO check lock placement
+  ASSERT (free_map->free_map_file != NULL);
+  ASSERT (bitmap_write (free_map->free_sectors, free_map->free_map_file));
 }
 
 /* Makes CNT sectors starting at SECTOR available for use. */
 void
 free_map_release (struct free_map *free_map, block_sector_t sector, size_t cnt)
 {
+  lock_acquire (&free_map->bitmap_lock);
   ASSERT (bitmap_all (free_map->free_sectors, sector, cnt));
   bitmap_set_multiple (free_map->free_sectors, sector, cnt, false);
+  lock_release (&free_map->bitmap_lock);
   bitmap_write (free_map->free_sectors, free_map->free_map_file);
 }
 
@@ -86,7 +93,7 @@ void
 free_map_create (struct free_map *free_map) 
 {
   /* Create inode. */
-  if (!inode_create (free_map->reserved_inode))
+  if (!inode_create (free_map->reserved_inode, false))
     PANIC ("free map creation failed");
 
   /* Write bitmap to file. */
