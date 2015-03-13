@@ -6,7 +6,8 @@
 /* An open file. */
 struct file 
   {
-    struct inode *inode;        /* File's inode. */
+    block_sector_t inumber;     /* Specifies position in inode sectors */
+    struct inode *inode;	/* Inode for this file */
     off_t pos;                  /* Current position. */
     bool deny_write;            /* Has file_deny_write() been called? */
   };

@@ -93,6 +93,25 @@ bitmap_create (size_t bit_cnt)
   return NULL;
 }
 
+/* Extends a bitmap to have a new, larger bit count. */
+struct bitmap *
+bitmap_extend (struct bitmap *bitmap, size_t bit_cnt)
+{
+  if (bitmap == NULL)
+    return NULL;
+  if (bitmap->bit_cnt <= bit_cnt)
+    return bitmap;
+  size_t old_count = bitmap->bit_cnt;
+  bitmap->bit_cnt = bit_cnt;
+  bitmap->bits = realloc (bitmap->bits, byte_cnt (bit_cnt));
+  if (bitmap->bits != NULL)
+    {
+      bitmap_set_multiple (bitmap, old_count + 1, bitmap->bit_cnt, false);
+      return bitmap;
+    }
+  return NULL;
+}
+
 /* Creates and returns a bitmap with BIT_CNT bits in the
    BLOCK_SIZE bytes of storage preallocated at BLOCK.
    BLOCK_SIZE must be at least bitmap_needed_bytes(BIT_CNT). */
