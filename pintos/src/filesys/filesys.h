@@ -12,6 +12,7 @@
 
 /* Block device that contains the file system. */
 struct block *fs_device;
+struct free_map inode_map;
 
 void filesys_init (bool format);
 void filesys_done (void);

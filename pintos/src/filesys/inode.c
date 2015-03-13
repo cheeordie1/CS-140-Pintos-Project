@@ -150,7 +150,7 @@ inode_init (void)
 bool
 inode_create (block_sector_t inumber, bool is_dir)
 {
-  struct inode new_inode;
+  struct disk_inode inode_disk;
   bool success = false;
 
   ASSERT (length >= 0);
@@ -166,7 +166,9 @@ inode_create (block_sector_t inumber, bool is_dir)
   struct cache_block *cached_inode_sector; 
   lock_acquire (&GENGAR);
   if ((*cached_inode_sector = cache_find_sector (sector)) == NULL)
-    cache_fetch (sector, INODE_DATA, caced_inode_sector);
+    cached_inode_sector = cache_fetch (sector, INODE_DATA);
+  cache_write (cached_inode_sector, inode_disk, 
+               byte_ofs_inode_sector (inumber), sizeof (inode_disk));
   lock_release (&GENGAR);
   return true;
 }

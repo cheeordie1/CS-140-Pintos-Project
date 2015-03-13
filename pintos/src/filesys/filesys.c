@@ -12,7 +12,6 @@
 /* Partition that contains the file system. */
 struct block *fs_device;
 struct free_map fs_map;
-struct free_map inode_map;
 
 /* First sector of non-inode data */
 block_size_t file_block_start;

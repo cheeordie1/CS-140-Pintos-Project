@@ -36,7 +36,10 @@ struct file *
 dir_open (struct inode *inode) 
 {
   struct file *file = calloc (1, sizeof *file);
-  if (inode != NULL && file != NULL && inode->dir)
+  lock_acquire (&GENGAR);
+  struct disk_node *d_node;
+
+  if (inode->d_inode != NULL && file != NULL && inode->d_inode->dir)
     {
       file->inode = inode;
       file->pos = 0;
@@ -60,17 +63,19 @@ dir_open_root (void)
 
 /* Opens and returns a new directory for the same inode as DIR.
    Returns a null pointer on failure. */
-struct dir *
-dir_reopen (struct dir *dir) 
+struct file *
+dir_reopen (struct file *dir) 
 {
-  return dir_open (inode_reopen (dir->inode));
+  if (dir->inode->dir) 
+    return dir_open (inode_reopen (dir->inode));
+  return NULL;
 }
 
 /* Destroys DIR and frees associated resources. */
 void
-dir_close (struct dir *dir) 
+dir_close (struct file *dir) 
 {
-  if (dir != NULL)
+  if (dir != NULL && dir->inode->dir)
     {
       inode_close (dir->inode);
       free (dir);
@@ -79,7 +84,7 @@ dir_close (struct dir *dir)
 
 /* Returns the inode encapsulated by DIR. */
 struct inode *
-dir_get_inode (struct dir *dir) 
+dir_get_inode (struct file *dir) 
 {
   return dir->inode;
 }
