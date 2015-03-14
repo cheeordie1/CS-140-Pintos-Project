@@ -29,6 +29,14 @@ struct disk_inode
     uint16_t magic;                      /* Magic number. */
   };
 
+/* Returns the number of sectors to allocate for an inode SIZE
+bytes long. */
+static inline size_t
+bytes_to_sectors (off_t size)
+{
+  return DIV_ROUND_UP (size, BLOCK_SECTOR_SIZE);
+}
+
 static inline size_t
 byte_ofs_inode_sector (size_t inumber)
 {
@@ -91,6 +99,7 @@ inode_lookup (struct inode *inode, int block_idx)
   struct cache_block *cached_inode_sector;
   struct disk_inode *inode_disk;
   bool large;
+  block_sector_t indirect_sector;
   block_sector_t sector_ofs = byte_ofs_inode_sector (inode->inumber);
   lock_acquire (&GENGAR);
   if ((cached_inode_sector = cache_find_sector (inode->sector)) == NULL)
@@ -98,15 +107,29 @@ inode_lookup (struct inode *inode, int block_idx)
   inode_disk = ((struct disk_inode *) cached_inode_sector->data) + sector_ofs;
   large = inode_disk->large;
   lock_release (&GENGAR);
-  if (large) 
-    return large_lookup (inode, block_idx);
+  if (large)
+    {
+      size_t direct_idx = block_idx / BLOCKNUMS_PER_IND;
+      if (direct_idx < DOUBIND_SECTOR)
+	{
+          block_sector_t indirect_sector = direct_lookup (inode, direct_idx);
+	  return indirect_lookup (indirect_sector, block_idx);
+	}
+      else
+	{
+          block_sector_t indirect_sector = direct_lookup (inode, DOUBIND_SECTOR);
+	  block_sector_t dindirect_sector = indirect_lookup (indirect_sector,
+	                                                     block_idx);
+	  return dindirect_lookup (dindirect_sector, block_idx);
+	}
+    }
   else 
-    return small_lookup (inode, block_idx); 
+    return direct_lookup (inode, block_idx); 
 }
 
 /* Runs inode fileblock lookup algorithm for small files. */
 static block_sector_t 
-small_lookup (struct inode *inode, int block_idx)
+direct_lookup (struct inode *inode, size_t block_idx)
 {
   ASSERT (block_idx >= 0 && block_idx < DIRECT_SECTORS);
   struct cache_block *cached_inode_sector;
@@ -124,40 +147,32 @@ small_lookup (struct inode *inode, int block_idx)
   return file_data_sector; 
 }
 
-/* Runs inode fileblock lookup algorithm for large files. */
+/* Passed in a block that is indirect, returns either a doubly
+   indirect block sector or a file data sector. */
 static block_sector_t
-large_lookup (struct inode *inode, int block_idx)
+indirect_lookup (size_t indirect_sector, size_t block_idx)
 {
-  int indirect_idx = block_idx / BLOCKNUMS_PER_IND;
-  int indirect_ofs;
-  block_sector_t file_data_sector;
-  block_sector_t lookup_sector; 
-  struct cache_block *cached_inode_sector;
-  struct disk_inode *inode_disk;
-  block_sector_t sector_ofs = byte_ofs_inode_sector (inode->inumber);
-  lock_acquire (&GENGAR);
-  if ((cached_inode_sector = cache_find_sector (inode->sector)) == NULL)
-    cached_inode_sector = cache_fetch (inode->sector, INODE_METADATA);
-  inode_disk = ((struct disk_inode *) cached_inode_sector->data) + sector_ofs;
-  if (indirect_idx < DOUBIND_SECTOR)
-    lookup_sector = inode_disk->i_sectors[indirect_idx];
-  else
-    lookup_sector = inode_disk->i_sectors[DOUBIND_SECTOR];
-  lock_release (&GENGAR);
+  size_t indirect_idx = block_idx / BLOCKNUMS_PER_IND;
+  size_t indirect_ofs;
   if (indirect_idx < DOUBIND_SECTOR)
     {
       indirect_ofs = block_idx % BLOCKNUMS_PER_IND;
-      file_data_sector = lookup_in_sector (lookup_sector, indirect_ofs);
+      return lookup_in_sector (indirect_sector, indirect_ofs);
     }
   else
     {
-      indirect_ofs = (indirect_idx - DOUBIND_SECTOR) / BLOCKNUMS_PER_IND;
-      int dindirect_ofs = (indirect_idx - DOUBIND_SECTOR) % BLOCKNUMS_PER_IND;
-      block_sector_t dindirect_idx = lookup_in_sector (fs, lookup_sector, 
-				                       indirect_ofs);
-      file_data_sector = lookup_in_sector (dindirect_idx, dindirect_ofs);
+      indirect_ofs = indirect_idx - DOUBIND_SECTOR;
+      return lookup_in_sector (indirect_sector, indirect_ofs);
     }
-  return file_data_sector;
+}
+
+/* Passed in a block that is doubly indirect and returns the
+   file data sector that is requested. */
+static block_sector_t
+dindirect_lookup (size_t dindirect_sector, size_t block_idx)
+{
+  size_t dindirect_ofs = block_idx % BLOCKNUMS_PER_IND;
+  return lookup_in_sector (dindirect_sector, dindirect_ofs);
 }
 
 /* Searches for a sector in an indirect sector. */
@@ -305,25 +320,58 @@ inode_close (struct inode *inode)
 
 /* Releases all sectors obtained by an inode. */
 static void
-inode_close_tree (block_sector_t inumber)
+inode_close_tree (struct inode *inode)
 {
   struct cache_block *cached_inode_sector;
   struct disk_inode *inode_disk;
   size_t num_blocks_to_delete;
+  size_t block_idx;
   block_sector_t sector_ofs = byte_ofs_inode_sector (inode->inumber);
   lock_acquire (&GENGAR);
   if ((cached_inode_sector = cache_find_sector (inode->sector)) == NULL)
     cached_inode_sector = cache_fetch (inode->sector, INODE_METADATA);
   inode_disk = ((struct disk_inode *) cached_inode_sector->data) + sector_ofs;
-  num_blocks_to_delete = inode_disk->length / 
+  num_blocks_to_delete = bytes_to_sectors (inode_disk->length);
   lock_release (&GENGAR);
-  if (large)
+  if (inode_disk->large)
     {
-      return large_lookup (inode, block_idx);
+      for (block_idx = 0; block_idx < num_blocks_to_delete; block_idx++)
+	{
+          size_t direct_idx = block_idx / BLOCKNUMS_PER_IND;
+          if (direct_idx < DOUBIND_SECTOR)
+            {
+              block_sector_t indirect_sector = direct_lookup (inode, direct_idx);
+	      block_sector_t file_data = indirect_lookup (indirect_sector,
+	                                                  block_idx);
+	      if (block_idx % BLOCKNUMS_PER_IND == BLOCKNUMS_PER_IND - 1 ||
+		  block_idx == num_blocks_to_delete - 1)
+	        free_map_release (&fs_map, indirect_sector, 1);
+	      free_map_release (&fs_map, file_data, 1);
+	    }
+          else
+	    {
+              block_sector_t indirect_sector = direct_lookup (inode,
+	                                       DOUBIND_SECTOR);
+	      block_sector_t dindirect_sector = indirect_lookup 
+	                                        (indirect_sector, block_idx);
+	      if (block_idx == num_blocks_to_delete - 1)
+	        free_map_release (&fs_map, indirect_sector, 1);
+	      block_sector_t file_data = dindirect_lookup (dindirect_sector,
+	                                                   block_idx);
+	      if (block_idx % BLOCKNUMS_PER_IND == BLOCKNUMS_PER_IND - 1 ||
+		  block_idx == num_blocks_to_delete - 1)
+	        free_map_release (&fs_map, dindirect_sector, 1);
+	      free_map_release (&fs_map, file_data, 1);
+	    }
+	}
     }
   else
     {
-      
+      for (block_idx = 0; block_idx < num_blocks_to_delete; curr_sector++)
+        {
+	  block_sector_t delete_block = direct_lookup (inode, block_idx);
+          free_map_release (&fs_map, delete_block, 1);
+        }
     }
 }
 
