@@ -93,7 +93,8 @@ void
 free_map_create (struct free_map *free_map) 
 {
   /* Create inode. */
-  if (!inode_create (free_map->reserved_inode, false))
+  if (!inode_create (free_map->reserved_inode, sizeof (free_map->free_sectors),
+                     false))
     PANIC ("free map creation failed");
 
   /* Write bitmap to file. */

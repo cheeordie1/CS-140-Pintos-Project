@@ -10,11 +10,11 @@
 
 struct buffer_cache
   {
-    struct bitmap *used_blocks;                  /* Free cache blocks. */
-    struct hash cache_segment;                   /* Hash that holds data. */
-    struct cache_block cache_frames[CACHE_MAX];  /* Blocks of cached data. */
-    size_t cursor;                                  /* Keep track of clock hand */
-    size_t evicting_hand;                           /* Hand for eviction. */
+    struct bitmap *used_blocks;                 /* Free cache blocks. */
+    struct hash cache_segment;                  /* Hash that holds data. */
+    struct cache_block cache_frames[CACHE_MAX]; /* Blocks of cached data. */
+    size_t cursor;                              /* Keep track of clock hand */
+    size_t evicting_hand;                       /* Hand for eviction. */
   };
 
 static unsigned cache_hash (const struct hash_elem *e, void *aux);

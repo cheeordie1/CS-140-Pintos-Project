@@ -12,7 +12,6 @@
 
 /* Block device that contains the file system. */
 static struct block *fs_device;
-static struct free_map inode_map;
 static struct free_map fs_map;
 
 

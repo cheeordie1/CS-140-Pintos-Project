@@ -518,6 +518,29 @@ switch (syscall)
          syscall_munmap (*(mapid_t *) syscall_arg (f->esp, 1));
          break;
       #endif
+      #ifdef FILESYS
+      /* Change the current working directory. */
+      case SYS_CHDIR:
+         f->eax = syscall_chdir (*(char **) syscall_arg (f->esp, 1));
+         break;
+      /* Make a new directory. */
+      case SYS_MKDIR:
+         f->eax = syscall_mkdir (*(char **) syscall_arg (f->esp, 1));
+         break;
+      /* Read an entry from a given directory. */
+      case SYS_READDIR:
+         f->eax = syscall_readdir (*(int *) syscall_arg (f->esp, 1),
+                                   *(char **) syscall_arg (f->esp, 2));
+         break;
+      /* Validate a given directoy as such. */
+      case SYS_ISDIR:
+         f->eax = syscall_isdir (*(int *) syscall_arg (f->esp, 1));
+         break;
+      /* Return the inumber associated with a given directory. */
+      case SYS_INUMBER:
+         f->eax = syscall_inumber (*(int *) syscall_arg (f->esp, 1));
+         break;
+      #endif
       default:
         printf ("system call!\n");
         thread_exit ();
