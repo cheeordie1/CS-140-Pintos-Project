@@ -24,7 +24,7 @@ struct disk_inode
   {
     off_t length;                        /* File size in bytes. */
     block_sector_t i_sectors[6];         /* Sector numbers of disk locations. */
-    bool dir;                            /* True if directory, false otherwise. */
+    bool dir;                            /* True if directory. */
     bool large;                          /* True if large block addressing.  */
     uint16_t magic;                      /* Magic number. */
   };
@@ -47,6 +47,10 @@ byte_ofs_inode_sector (size_t inumber)
 struct inode
   {
     struct list_elem elem;               /* Element in inode list. */
+    struct shared_lock sl;               /* Read / write shared lock. */
+    off_t length;                        /* On disk length of the file. */
+    bool dir;                            /* True if directory. */
+    bool large;                          /* True if large block addressing. */
     block_sector_t inumber;              /* Inumber that represents inode. */
     block_sector_t sector;               /* Sector that contains inode. */
     int open_cnt;                        /* Number of openers. */
@@ -57,12 +61,14 @@ struct inode
 static size_t file_block_start;
 static size_t num_inodes;
 
-static block_sector_t small_lookup (struct inode *inode, int block_idx);
-static block_sector_t large_lookup (struct inode *inode, int block_idx);
+static block_sector_t direct_lookup (struct inode *inode, size_t block_idx);
+static block_sector_t indirect_lookup (size_t indirect_sector,
+                                       size_t block_idx);
+static block_sector_t dindirect_lookup (size_t dindirect_sector, 
+                                        size_t block_idx);
 static block_sector_t lookup_in_sector (block_sector_t file_data_sector,
                                         int sector_ofs);
 static void inode_close_tree (block_sector_t inumber);
-
 
 /* Returns the inode-relative block device sector that contains byte
    offset POS within INODE.
@@ -96,18 +102,8 @@ inode_sector_from_inumber (block_sector_t inumber)
 block_sector_t 
 inode_lookup (struct inode *inode, int block_idx) 
 {
-  struct cache_block *cached_inode_sector;
-  struct disk_inode *inode_disk;
-  bool large;
   block_sector_t indirect_sector;
-  block_sector_t sector_ofs = byte_ofs_inode_sector (inode->inumber);
-  lock_acquire (&GENGAR);
-  if ((cached_inode_sector = cache_find_sector (inode->sector)) == NULL)
-    cached_inode_sector = cache_fetch (inode->sector, INODE_METADATA);
-  inode_disk = ((struct disk_inode *) cached_inode_sector->data) + sector_ofs;
-  large = inode_disk->large;
-  lock_release (&GENGAR);
-  if (large)
+  if (inode->large)
     {
       size_t direct_idx = block_idx / BLOCKNUMS_PER_IND;
       if (direct_idx < DOUBIND_SECTOR)
@@ -138,7 +134,7 @@ direct_lookup (struct inode *inode, size_t block_idx)
   block_sector_t sector_ofs = byte_ofs_inode_sector (inode->inumber);
   lock_acquire (&GENGAR);
   if ((cached_inode_sector = cache_find_sector (inode->sector)) == NULL)
-    cached_inode_sector = cache_fetch (inode->sector, INODE_METADATA);
+    cached_inode_sector = cache_fetch (inode->sector, INODE_DATA);
   inode_disk = ((struct disk_inode *) cached_inode_sector->data) + sector_ofs;
   file_data_sector = inode_disk->i_sectors[block_idx];
   lock_release (&GENGAR);
@@ -205,28 +201,81 @@ inode_init (void)
   num_inodes = file_block_start * INODES_PER_SECTOR;
 }
 
+/* Append a reserved fileblock to the end of an inode. */
+static block_sector_t
+inode_append_sector (struct inode *inode)
+{
+  block_sector_t new_sector = INODE_ERROR;
+  if(!free_map_allocate (&fs_map, file_block_start, 1, &new_sector))
+    return INODE_ERROR;
+  size_t inode_ofs = inumber % INODES_PER_SECTOR;
+  struct cache_block *cached_inode_sector; 
+  struct disk_inode *inode_disk;
+  size_t sectors = bytes_to_sectors (inode->length);
+  block_sector_t sector = inode_sector_from_inumber (inode->inumber);
+  lock_acquire (&GENGAR);
+  if ((*cached_inode_sector = cache_find_sector (sector)) == NULL)
+    cached_inode_sector = cache_fetch (sector, INODE_DATA);
+  inode_disk = &((struct disk_node *) cached_inode_sector->data)[inode_ofs];
+  if (inode->large)
+    {
+      
+    }
+  else
+    {
+      if (sectors < DIRECT_SECTORS)
+        {
+          inode_disk->i_sectors[sectors + 1] = new_sector;
+        }
+      else
+        {
+	  block_sector_t new_indirect_sector = INODE_ERROR;
+          if(!free_map_allocate (&fs_map, file_block_start, 1, &new_sector))
+	    {
+              free_map_release (&fs_map, new_sector, 1);
+	      lock_release (&GENGAR);
+	      return INODE_ERROR; 
+	    }
+	  struct cache_block *cached_new_indsector;
+	  if ((*cached_new_indsector = cache_find_sector (sector)) == NULL)
+            cached_new_indsector = cache_fetch (sector, INODE_METADATA);
+	  uint16_t *ind_sectors = (uint16_t *) cached_new_indsector->data;
+	  size_t move_sector;
+	  memcpy (ind_sectors, inode_disk->i_sectors, DIRECT_SECTORS * 
+	          sizeof (uint16_t));
+	  ind_sectors[DIRECT_SECTORS] = new_sector;
+        }
+    }
+  lock_release (&GENGAR);
+}
+
 /* Initializes an inode with LENGTH bytes of data and
    writes the new inode to sector SECTOR on the file system
    device.
    Returns true if successful.
    Returns false if memory or disk allocation fails. */
 bool
-inode_create (block_sector_t inumber, bool is_dir)
+inode_create (block_sector_t inumber, off_t length, bool is_dir)
 {
-  struct disk_inode inode_disk;
+  struct disk_inode *inode_disk = NULL;
   bool success = false;
 
   ASSERT (length >= 0);
   
   /* If this assertion fails, inode algorithms will fail. */
-  ASSERT (sizeof *inode_disk == BLOCK_SECTOR_SIZE);
+  ASSERT (sizeof *inode_disk == INODE_SIZE);
 
+  inode_disk = calloc (1, sizeof *inode_disk);
+  if (inode_disk == NULL)
+    return false;
+  size_t sectors = bytes_to_sectors (length);
+  inode_disk->length = length;
   inode_disk->dir = is_dir;
-  inode_disk->large = false;
+  inode_disk->large = sectors > DIRECT_SECTORS;
   inode_disk->magic = INODE_MAGIC;
   block_sector_t sector = inode_sector_from_inumber (inumber);
   if (sector == INODE_ERROR)
-    success = false;  
+    success = false;
   else
     {
       struct cache_block *cached_inode_sector; 
@@ -236,8 +285,30 @@ inode_create (block_sector_t inumber, bool is_dir)
       cache_write (cached_inode_sector, inode_disk,
                    byte_ofs_inode_sector (inumber), sizeof inode_disk);
       lock_release (&GENGAR);
+      block_sector_t alloced_sectors[sectors];
+      size_t curr_sector;
+      struct inode dummy_inode;
+      dummy_inode->length = length;
+      dummy_inode->large = inode_disk->large;
+      dummy_inode->inumber = inumber;
+      for (curr_sector = 0; curr_sector < sectors; curr_sector++)
+	{
+          alloced_sectors[curr_sector] = inode_append_sector (&dummy_inode);
+	  if (alloced_sectors[curr_sector] == INODE_ERROR)
+	    {
+	       size_t delete_sector;
+               for (delete_sector = 0; delete_sector < curr_sector;
+	            delete_sector++)
+	         {
+		   free_map_release (&fs_map, delete_sector, 1);
+	         }
+	       success = false;
+	       break;
+	    }
+	}
       success = true;
     }
+  free (inode_disk);
   return success;
 }
 
@@ -326,11 +397,11 @@ inode_close_tree (struct inode *inode)
   struct disk_inode *inode_disk;
   size_t num_blocks_to_delete;
   size_t block_idx;
-  block_sector_t sector_ofs = byte_ofs_inode_sector (inode->inumber);
+  block_sector_t inode_ofs = inode->inumber % INODES_PER_SECTOR;
   lock_acquire (&GENGAR);
   if ((cached_inode_sector = cache_find_sector (inode->sector)) == NULL)
     cached_inode_sector = cache_fetch (inode->sector, INODE_METADATA);
-  inode_disk = ((struct disk_inode *) cached_inode_sector->data) + sector_ofs;
+  inode_disk = &((struct disk_node *) cached_inode_sector->data)[inode_ofs];
   num_blocks_to_delete = bytes_to_sectors (inode_disk->length);
   lock_release (&GENGAR);
   if (inode_disk->large)

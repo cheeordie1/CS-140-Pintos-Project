@@ -25,7 +25,6 @@ struct cache_block
   };
 
 struct shared_lock general_eviction_lock;
-// TODO PLEASE REMEMBER TO TAKE THIS OUT
 struct lock GENGAR;
 
 void cache_init (void);
