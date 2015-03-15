@@ -17,11 +17,13 @@
 #include "lib/kernel/hash.h"
 #include "userprog/pagedir.h"
 #include "vm/frame.h"
+#ifdef FILESYS
+#include "filesys/directory.h"
+#endif
 
 #define STACK_LIMIT 0x00800000 
 
 static bool is_valid_ptr (const void *ptr, size_t len);
-static bool is_valid_mapping (const void *ptr, size_t len);
 static void validate_esp (void *esp);
 static void syscall_handler (struct intr_frame *);
 static void syscall_halt (void);
@@ -38,10 +40,10 @@ static void syscall_seek (int fd, uint32_t position);
 static uint32_t syscall_tell (int fd);
 static void syscall_close (int fd);
 #ifdef VM
+static bool is_valid_mapping (const void *ptr, size_t len);
 static mapid_t syscall_mmap (int fd, void *addr);
 static void syscall_munmap (mapid_t mapid);
 #endif
-
 #ifdef FILESYS
 static bool syscall_chdir (const char* dir);
 static bool syscall_mkdir (const char* dir);
@@ -358,13 +360,14 @@ static void syscall_munmap (mapid_t mapid)
 }
 #endif
 
-#ifndef FILESYS
+#ifdef FILESYS
 
 /* Changes the current working directory of the process to dir, which may be
    relative or absolute. Returns true if successful, false on failure. */
 static bool
 syscall_chdir (const char* dir)
 {
+  dir = NULL;
   return false;
 }
 
@@ -375,6 +378,7 @@ syscall_chdir (const char* dir)
 static bool
 syscall_mkdir (const char* dir)
 {
+  dir = NULL;
   return false;
 }
 
@@ -402,7 +406,7 @@ syscall_isdir (int fd)
   struct hash_elem *found_elem;
   found_elem = fdt_search (&thread_current ()->fd_hash, fd);
   if (found_elem == NULL)
-    return 0;
+    return false;
   struct file *found_fd = 
   hash_entry (found_elem, struct file_descriptor, elem)->file_;
   return found_fd->inode->dir;
@@ -417,8 +421,8 @@ syscall_inumber (int fd)
   found_elem = fdt_search (&thread_current ()->fd_hash, fd);
   if (found_elem == NULL)
     return 0;
-  struct file *found_fd = 
-  hash_entry (found_elem, struct file_descriptor, elem)->file_;
+  struct file *found_fd = hash_entry (found_elem, struct file_descriptor, 
+                                      elem)->file_;
   return found_fd->inumber;
 }
 

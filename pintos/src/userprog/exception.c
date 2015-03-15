@@ -190,12 +190,12 @@ page_fault (struct intr_frame *f)
   /* Fetch from swap or filesys. */
   if (frame_obtain (curr_spe))
     return;
-#endif 
 
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
      which fault_addr refers. */
   error:
+#endif 
     printf ("Page fault at %p: %s error %s page in %s context.\n",
             fault_addr,
             not_present ? "not present" : "rights violation",

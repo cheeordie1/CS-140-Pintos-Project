@@ -5,12 +5,10 @@
 #include "filesys/off_t.h"
 #include "devices/block.h"
 
-#define INODE_ERROR -1
+#define INODE_ERROR ((block_sector_t) -1)
 
 /* First sector of non-inode data. */
 static block_sector_t file_block_start;
- 
-static struct lock GENGAR; //:')
 static struct free_map inode_map;
  
 void inode_init (void);

@@ -3,6 +3,7 @@
 #include <debug.h>
 #include <round.h>
 #include <string.h>
+#include "filesys/cache.h"
 #include "filesys/filesys.h"
 #include "filesys/free-map.h"
 #include "threads/malloc.h"
@@ -63,7 +64,7 @@ struct inode
   };
 
 static size_t num_inodes;
-static block_size_t max_sectors;
+static block_sector_t max_sectors;
 
 static block_sector_t direct_lookup (struct inode *inode, size_t block_idx);
 static block_sector_t indirect_lookup (size_t indirect_sector,
@@ -90,7 +91,7 @@ inode_sector_from_inumber (block_sector_t inumber)
    use 7 or less file blocks and indirect index lookups on large files
    that have more than 7 file blocks. Returns INODE_ERROR on error. */
 block_sector_t 
-inode_lookup (struct inode *inode, int block_idx) 
+inode_lookup (struct inode *inode, size_t block_idx) 
 {
   block_sector_t indirect_sector;
   if (inode->large)
@@ -98,12 +99,12 @@ inode_lookup (struct inode *inode, int block_idx)
       size_t direct_idx = block_idx / BLOCKNUMS_PER_IND;
       if (direct_idx < DOUBIND_SECTOR)
 	{
-          block_sector_t indirect_sector = direct_lookup (inode, direct_idx);
+          indirect_sector = direct_lookup (inode, direct_idx);
 	  return indirect_lookup (indirect_sector, block_idx);
 	}
       else
 	{
-          block_sector_t indirect_sector = direct_lookup (inode, DOUBIND_SECTOR);
+          indirect_sector = direct_lookup (inode, DOUBIND_SECTOR);
 	  block_sector_t dindirect_sector = indirect_lookup (indirect_sector,
 	                                                     block_idx);
 	  return dindirect_lookup (dindirect_sector, block_idx);
@@ -117,7 +118,7 @@ inode_lookup (struct inode *inode, int block_idx)
 static block_sector_t 
 direct_lookup (struct inode *inode, size_t block_idx)
 {
-  ASSERT (block_idx >= 0 && block_idx < DIRECT_SECTORS);
+  ASSERT (block_idx < DIRECT_SECTORS);
   struct cache_block *cached_inode_sector;
   struct disk_inode *inode_disk;
   block_sector_t file_data_sector;
@@ -198,7 +199,7 @@ inode_append_sector (struct inode *inode)
   block_sector_t new_sector = INODE_ERROR;
   if(!free_map_allocate (&fs_map, file_block_start, 1, &new_sector))
     return INODE_ERROR;
-  size_t ofs = byte_ofs_inode_sector (inumber);
+  size_t ofs = byte_ofs_inode_sector (inode->inumber);
   struct cache_block *cached_inode_sector; 
   struct disk_inode *inode_disk;
 
@@ -212,10 +213,9 @@ inode_append_sector (struct inode *inode)
           if (cached_inode_sector == NULL)
             cached_inode_sector = cache_fetch (inode->sector, INODE_DATA);
           inode_disk = (struct disk_inode *) &cached_inode_sector->data[ofs];
-          inode_disk->i_sectors[inode->sectors] = new_indsector; 
+          inode_disk->i_sectors[inode->sectors] = new_sector; 
           cached_inode_sector->dirty = true;
           lock_release (&GENGAR);
-	  inode->dirty = true;
 	  inode->dir_sectors++;
         }
       else
@@ -236,7 +236,7 @@ inode_append_sector (struct inode *inode)
 	      if (cached_new_ind == NULL)
             cached_new_ind = cache_fetch (new_ind, INODE_METADATA);
 	      cache_write (cached_new_ind, inode_disk->i_sectors, 0,
-	                   DIRECT_SECTORS * sizeof (block_sector_t));
+                           DIRECT_SECTORS * sizeof (block_sector_t));
 	      cache_write (cached_new_ind, &new_sector, DIRECT_SECTORS *
 	                   sizeof (block_sector_t), sizeof (block_sector_t));
 	      inode_disk->i_sectors[0] = new_ind; 
@@ -404,10 +404,10 @@ inode_create (block_sector_t inumber, off_t length, bool is_dir)
   inode_disk->length = length;
   inode_disk->dir = is_dir;
   inode_disk->large = sectors > DIRECT_SECTORS;
-  inode_disk->magic = INODE_MAGIC;
+  inode_disk->magic = (uint16_t) INODE_MAGIC;
   block_sector_t inode_sector = inode_sector_from_inumber (inumber);
   block_sector_t inode_ofs = byte_ofs_inode_sector (inumber);
-  if (sector == INODE_ERROR)
+  if (inode_sector == INODE_ERROR)
     success = false;
   else
     {
@@ -418,24 +418,23 @@ inode_create (block_sector_t inumber, off_t length, bool is_dir)
       cache_write (cached_inode_sector, inode_disk, inode_ofs,
                    sizeof inode_disk);
       lock_release (&GENGAR);
-      block_sector_t appended_sector;
       size_t curr_sector;
       struct inode dummy_inode;
-      dummy_inode->sectors = 0;
-      dummy_inode->dir_sectors = 0;
-      dummy_inode->ind_sectors = 0;
-      dummy_inode->dind_sectors = 0;
-      dummy_inode->length = length;
-      dummy_inode->large = inode_disk->large;
-      dummy_inode->inumber = inumber;
+      dummy_inode.sectors = 0;
+      dummy_inode.dir_sectors = 0;
+      dummy_inode.ind_sectors = 0;
+      dummy_inode.dind_sectors = 0;
+      dummy_inode.length = length;
+      dummy_inode.large = inode_disk->large;
+      dummy_inode.inumber = inumber;
       for (curr_sector = 0; curr_sector < sectors; curr_sector++)
         {
-	      if (inode_append_sector (&dummy_inode) == INODE_ERROR)
-	        {
-	          inode_close_tree (&dummy_inode); 
-	          success = false;
-	          break;
-	        }
+	  if (inode_append_sector (&dummy_inode) == INODE_ERROR)
+	    {
+	      inode_close_tree (&dummy_inode); 
+	      success = false;
+	      break;
+	    }
         }
       success = true;
     }
@@ -496,7 +495,7 @@ inode_open (block_sector_t inumber)
         {
 	  inode->dir_sectors = DIRECT_SECTORS;
           inode->ind_sectors = (DIRECT_SECTORS - 1) * BLOCKNUMS_PER_IND;
-	  inode->dind_sectors = inode->sectors - ind_sectors;
+	  inode->dind_sectors = inode->sectors - inode->ind_sectors;
 	  inode->ind_sectors += (inode->dind_sectors - 1) / BLOCKNUMS_PER_IND +
 	                         1;
         }
@@ -508,7 +507,7 @@ inode_open (block_sector_t inumber)
     }
   else
     {
-      inode->dir_sectors = sectors;
+      inode->dir_sectors = inode->sectors;
       inode->ind_sectors = 0;
       inode->dind_sectors = 0;
     }
@@ -573,10 +572,10 @@ inode_close_tree (struct inode *inode)
         {
           if (curr_dir < DOUBIND_SECTOR)
             num_ind = (curr_dir == inode->dir_sectors - 1) ? 
-                      ((inode->ind_sectors - 1) % BLOCKNUMS_PER_SECTOR) + 1 : 
-                      BLOCKNUMS_PER_SECTOR;
+                      ((inode->ind_sectors - 1) % BLOCKNUMS_PER_IND) + 1 : 
+                      BLOCKNUMS_PER_IND;
           else
-	        num_ind = ((inode->dind_sectors - 1) / BLOCKNUMS_PER_SECTOR) + 1;
+	        num_ind = ((inode->dind_sectors - 1) / BLOCKNUMS_PER_IND) + 1;
         }
       for (curr_ind = 0; curr_ind < num_ind; curr_ind++)
         {
@@ -586,8 +585,8 @@ inode_close_tree (struct inode *inode)
             {
 		      size_t num_dind = (curr_ind == (num_ind - 1)) ? 
                                  ((inode->ind_sectors - 1) %
-                                 BLOCKNUMS_PER_SECTOR) + 1 :
-                                 BLOCKNUMS_PER_SECTOR;
+                                 BLOCKNUMS_PER_IND) + 1 :
+                                 BLOCKNUMS_PER_IND;
 		      for (curr_dind = 0; curr_dind < num_dind; curr_dind++)
 		        {
 		          block_sector_t del_dind;
@@ -621,7 +620,7 @@ inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset)
     
   /* Check if read access passed EOF */  
   lock_acquire_shared (&inode->sl);
-  size_t length = inode_length (inode);
+  off_t length = inode_length (inode);
   if (length < offset)
     {
       lock_release_shared (&inode->sl);
@@ -631,7 +630,7 @@ inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset)
     {
       /* Disk sector to read, starting byte offset within sector. */
       size_t sectors_into_file = bytes_to_sectors (offset);
-      block_sector_t sector = inode_lookup (sectors_into_file);
+      block_sector_t sector = inode_lookup (inode, sectors_into_file);
       int sector_ofs = offset % BLOCK_SECTOR_SIZE;
 
       /* Bytes left in inode, bytes left in sector, lesser of the two. */
@@ -648,7 +647,8 @@ inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset)
       lock_acquire (&GENGAR);
       if ((cached_sector = cache_find_sector (sector)) == NULL)
         cached_sector = cache_fetch (sector, FILE_DATA);
-      cache_read (cached_sector, buffer_, offset, chunk_size);  
+      memcpy (buffer + bytes_read, cached_sector->data + sector_ofs,
+              chunk_size);
       lock_release (&GENGAR);                                        
 
       /* Advance. */
@@ -671,7 +671,7 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
 {
   const uint8_t *buffer = buffer_;
   off_t bytes_written = 0;
-  block_sector_t inode_sector = inode_sector_from_inumber (inumber);
+  block_sector_t inode_sector = inode_sector_from_inumber (inode->inumber);
   size_t inode_ofs = inode->inumber % INODES_PER_SECTOR;
   struct cache_block *cached_sector;
   struct cache_block *cached_inode;
@@ -724,11 +724,10 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
       lock_acquire (&GENGAR);
       if ((cached_sector = cache_find_sector (sector)) == NULL)
         cached_sector = cache_fetch (sector, FILE_DATA);
-      cache_write (cached_sector, buffer_, sector_ofs, chunk_size);  
+      cache_write (cached_sector, buffer, sector_ofs, chunk_size);  
       if ((cached_inode = cache_find_sector (inode_sector)) == NULL)
         cached_inode = cache_fetch (inode_sector, INODE_DATA);
-      inode_disk = ((struct disk_inode *) cached_inode_sector->data) +
-                   inode_ofs;
+      inode_disk = ((struct disk_inode *) cached_inode->data) + inode_ofs;
       inode_disk->length += (size_t) chunk_size;
       cached_inode->dirty = true;
       lock_release (&GENGAR);

@@ -1,9 +1,9 @@
 #ifndef CACHE_H
 #define CACHE_H
 #include <hash.h>
-#include "threads/synch.h"
 #include "devices/block.h"
-
+#include "threads/synch.h"
+#include "filesys/filesys.h"
 
 enum sector_type
   {
@@ -28,7 +28,7 @@ struct lock GENGAR;
 void cache_init (void);
 struct cache_block *cache_find_sector (block_sector_t);
 struct cache_block *cache_fetch (block_sector_t, enum sector_type);
-void cache_write (struct cache_block *, void *, size_t, size_t);
+void cache_write (struct cache_block *, const void *, size_t, size_t);
 void cache_delete (struct cache_block *);
 void cache_flush (void);
 

@@ -17,10 +17,10 @@ struct buffer_cache
     size_t evicting_hand;                       /* Hand for eviction. */
   };
 
-static unsigned cache_hash (const struct hash_elem *e, void *aux);
+static unsigned cache_hash (const struct hash_elem *e, void *aux UNUSED);
 static bool cache_cmp (const struct hash_elem *a,
                        const struct hash_elem *b,
-                       void *aux);
+                       void *aux UNUSED);
 static size_t cache_evict (void);
 
 static struct buffer_cache cache;
@@ -39,7 +39,7 @@ cache_init ()
 
 /* Hash the cache block by inumber. */
 static unsigned
-cache_hash (const struct hash_elem *e, void *aux)
+cache_hash (const struct hash_elem *e, void *aux UNUSED)
 {
   return hash_int (hash_entry (e, struct cache_block, elem)->inumber);
 }
@@ -48,7 +48,7 @@ cache_hash (const struct hash_elem *e, void *aux)
 static bool
 cache_cmp (const struct hash_elem *a,
            const struct hash_elem *b,
-           void *aux)
+           void *aux UNUSED)
 {
   struct cache_block *block_a = hash_entry (a, struct cache_block, elem);
   struct cache_block *block_b = hash_entry (b, struct cache_block, elem);
@@ -110,8 +110,8 @@ cache_delete (struct cache_block *cache_block)
 
 /* Writes to a cached sector, setting its dirty bool. */
 void
-cache_write (struct cache_block *cached_sector, void *buf,
-	     size_t start, size_t cnt)
+cache_write (struct cache_block *cached_sector, const void *buf,
+	     off_t start, size_t cnt)
 {
   cached_sector->dirty = true;
   memcpy (&cached_sector->data[start], buf, cnt);

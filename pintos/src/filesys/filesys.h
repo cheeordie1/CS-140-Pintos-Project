@@ -14,7 +14,6 @@
 static struct block *fs_device;
 static struct free_map fs_map;
 
-
 void filesys_init (bool format);
 void filesys_done (void);
 bool filesys_create (const char *name, off_t initial_size);

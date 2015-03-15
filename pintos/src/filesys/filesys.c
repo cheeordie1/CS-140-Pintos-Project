@@ -9,10 +9,6 @@
 
 #define PERCENT_INODES 1 / 100
 
-/* Partition that contains the file system. */
-static struct free_map fs_map;
-
-
 static void do_format (void);
 
 /* Initializes the file system module.

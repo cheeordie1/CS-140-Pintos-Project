@@ -53,7 +53,7 @@ free_map_set_multiple (struct free_map *free_map, size_t start, size_t cnt)
 {
   lock_acquire (&free_map->bitmap_lock);
   bitmap_set_multiple (free_map->free_sectors, start, cnt, true);
-  lock_release (&free_map->bitmap_lock); //TODO check lock placement
+  lock_release (&free_map->bitmap_lock);
   ASSERT (free_map->free_map_file != NULL);
   ASSERT (bitmap_write (free_map->free_sectors, free_map->free_map_file));
 }
