@@ -5,6 +5,8 @@
 #include "filesys/off_t.h"
 #include "devices/block.h"
 
+#define INODE_ERROR -1
+
 /* First sector of non-inode data. */
 block_size_t file_block_start;
 
