@@ -22,6 +22,7 @@ struct cache_block
     bool dirty;                     /* Recent write access. */
     enum sector_type type;          /* Type of fileblock for eviction. */
     struct shared_lock spot_lock;   /* Shared lock for eviction/fetching. */
+    struct shared_lock rw_lock;     /* Shared lock for reading/writing. */
     char data[BLOCK_SECTOR_SIZE];   /* Fileblock data. */
   };
 

@@ -13,7 +13,7 @@ struct buffer_cache
   {
     struct bitmap *used_blocks;                 /* Free cache blocks. */
     struct hash cache_segment;                  /* Hash that holds data. */
-    struct lock hash_lock;
+    struct lock hash_lock;                      /* Hash lock. */
     struct cache_block cache_frames[CACHE_MAX]; /* Blocks of cached data. */
     size_t cursor;                              /* Keep track of clock hand */
     size_t evicting_hand;                       /* Hand for eviction. */
@@ -52,12 +52,20 @@ cache_flush (void *aux UNUSED)
 void
 cache_init ()
 {
-  lock_init (&GENGAR);
   lock_init (&cache.hash_lock);
   cache.used_blocks = bitmap_create (CACHE_MAX);
   hash_init (&cache.cache_segment, cache_hash, cache_cmp, NULL);
   cache.cursor = CURSOR_START;
   cache.evicting_hand = EVICT_START;
+
+  size_t curr_block;
+  for (curr_block = 0; curr_block < CACHE_MAX; curr_block++)
+    {
+      struct cache_block *cache_data;
+      cache_data = &cache.cache_frames[curr_block];
+      slock_init (&cache_data->spot_lock);
+      slock_init (&cache_data->rw_lock);
+    }
   thread_create ("flush_thread", PRI_MAX, cache_flush, NULL);
 }
 
@@ -126,22 +134,14 @@ cache_pin (block_sector_t sector, enum sector_type type)
 		         != BITMAP_ERROR)
 	        {
 	          /* continue trying until exclusive access is gained. */
-	          if (!lock_try_acquire_exclusive (&cached_data->spot_lock))
-    		    continue;
-	           /* We have exclusive access to a spot. */
-	          else
+	          if (!lock_try_acquire_exclusive (&cache.cache_frames[pos]))
                 goto TM69;	
-	        }
-	}
+            }
+	    }
     /* The cache is full, so something must be evicted  */
-    if (!lock_try_acquire_exclusive (&cached_data->spot_lock))
-	  continue;
-    else
-	  {
-	    pos = cache_evict ();
-	    cached_data = &cache.cache_frames[pos];
-	    goto TM69;
-	  }
+	pos = cache_evict ();
+	cached_data = &cache.cache_frames[pos];
+
     TM69:
       bitmap_set (cache.used_blocks, pos, true);
 	  cached_data = cache_fetch (pos, sector, type);
@@ -176,7 +176,9 @@ cache_fetch (size_t pos, block_sector_t sector, enum sector_type type)
   cache_block->sector = sector;
   cache_block->removed = false;
   cache_block->dirty = false;
+  lock_acquire (&cache.hash_lock);
   hash_insert (&cache.cache_segment, &cache_block->elem);
+  lock_release (&cache.hash_lock);
   block_read (fs_device, cache_block->sector, cache_block->data);
   return cache_block; 
 }
@@ -188,7 +190,9 @@ cache_delete (struct cache_block *cache_block)
   if (cache_block->removed)
     return;
   cache_block->removed = true;
+  lock_acquire (&cache.hash_lock);
   hash_delete (&cache.cache_segment, &cache_block->elem);
+  lock_release (&cache.hash_lock);
   if (cache_block->dirty)
     block_write (fs_device, cache_block->sector, cache_block->data);
 }

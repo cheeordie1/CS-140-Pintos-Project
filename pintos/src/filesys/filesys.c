@@ -21,17 +21,16 @@ filesys_init (bool format)
     PANIC ("No file system device found, can't initialize file system.");
 
   file_block_start = block_size (fs_device) * PERCENT_INODES;
+  cache_init ();
   inode_init ();
   free_map_init (&inode_map, file_block_start, INODE_MAP_INODE);
   free_map_init (&fs_map, block_size (fs_device), FREE_MAP_INODE);
-  
+
   if (format) 
     do_format ();
 
   free_map_open (&inode_map);
   free_map_open (&fs_map);
-  free_map_set_multiple (&inode_map, 0, RESERVED_INODES);
-  free_map_set_multiple (&fs_map, 0, file_block_start);
 }
 
 /* Shuts down the file system module, writing any unwritten data
@@ -103,6 +102,8 @@ do_format (void)
   printf ("Formatting file system...");
   free_map_create (&inode_map);
   free_map_create (&fs_map);
+  free_map_set_multiple (&inode_map, 0, RESERVED_INODES);
+  free_map_set_multiple (&fs_map, 0, file_block_start);
   if (!dir_create (ROOT_DIR_INODE, 16))
     PANIC ("root directory creation failed");
   free_map_close (&inode_map);
