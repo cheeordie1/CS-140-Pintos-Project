@@ -772,6 +772,14 @@ init_thread (struct thread *t, const char *name, int priority)
 
 #endif
 
+#ifdef FILESYS
+
+/*  char default_dir = '\0';
+  t->curr_dirnum = open (&default_dir);
+*/
+
+#endif
+
   /*initialize the stack of acquired locks*/  
   list_init (&t->acquired_locks);
   t->waiting_for_tlock = NULL;

@@ -2,6 +2,8 @@
 #define FILESYS_FILESYS_H
 
 #include <stdbool.h>
+#include "devices/block.h"
+#include "filesys/free-map.h"
 #include "filesys/off_t.h"
 
 /* Sectors of system file inodes. */
@@ -11,8 +13,8 @@
 #define RESERVED_INODES 3      /* Number of reserved inodes. */
 
 /* Block device that contains the file system. */
-static struct block *fs_device;
-static struct free_map fs_map;
+struct block *fs_device;
+struct free_map fs_map;
 
 void filesys_init (bool format);
 void filesys_done (void);

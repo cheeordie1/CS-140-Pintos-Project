@@ -123,12 +123,10 @@ direct_lookup (struct inode *inode, size_t block_idx)
   struct disk_inode *inode_disk;
   block_sector_t file_data_sector;
   block_sector_t inode_ofs = inode->inumber % INODES_PER_SECTOR;
-  lock_acquire (&GENGAR);
-  if ((cached_inode_sector = cache_find_sector (inode->sector)) == NULL)
-    cached_inode_sector = cache_fetch (inode->sector, INODE_DATA);
+  cached_inode_sector = cache_pin (inode->sector, INODE_DATA);
   inode_disk = ((struct disk_inode *) cached_inode_sector->data) + inode_ofs;
   file_data_sector = inode_disk->i_sectors[block_idx];
-  lock_release (&GENGAR);
+  cache_unpin (cached_inode_sector);
   return file_data_sector; 
 }
 
@@ -166,11 +164,9 @@ lookup_in_sector (block_sector_t file_data_sector, size_t sector_ofs)
 {
   struct cache_block *cached_sector;
   block_sector_t ret_sector;
-  lock_acquire (&GENGAR);
-  if ((cached_sector = cache_find_sector (file_data_sector)) == NULL)
-    cached_sector = cache_fetch (file_data_sector, INODE_METADATA);
+  cached_sector = cache_pin (file_data_sector, INODE_METADATA)l;
   ret_sector = ((block_sector_t *) cached_sector->data)[sector_ofs];
-  lock_release (&GENGAR);
+  cache_unpin (cached_sector);
   return ret_sector;
 }
 
@@ -208,15 +204,12 @@ inode_append_sector (struct inode *inode)
     {
       if (inode->sectors < DIRECT_SECTORS)
         {
-          lock_acquire (&GENGAR);
-          cached_inode_sector = cache_find_sector (inode->sector);
-          if (cached_inode_sector == NULL)
-            cached_inode_sector = cache_fetch (inode->sector, INODE_DATA);
+          cached_inode_sector = cache_pin (inode->sector, INODE_DATA);
           inode_disk = (struct disk_inode *) &cached_inode_sector->data[ofs];
           inode_disk->i_sectors[inode->sectors] = new_sector; 
           cached_inode_sector->dirty = true;
-          lock_release (&GENGAR);
-	  inode->dir_sectors++;
+          cache_unpin (cached_inode_sector);
+          inode->dir_sectors++;
         }
       else
         {
@@ -772,3 +765,19 @@ inode_length (const struct inode *inode)
 {
   return inode->length;
 }
+
+/* Returns whether an inode is a directory or not. */
+bool
+inode_isdir (const struct inode *inode)
+{
+  return inode->dir;
+}
+
+/* Returns the inumber representing the inode. */
+block_sector_t 
+inode_inumber (const struct inode inode *);
+{
+  return inode->inumber;
+}
+
+

@@ -2,8 +2,8 @@
 #include <debug.h>
 #include <stdio.h>
 #include <string.h>
+#include "filesys/cache.h"
 #include "filesys/file.h"
-#include "filesys/free-map.h"
 #include "filesys/inode.h"
 #include "filesys/directory.h"
 
@@ -39,6 +39,7 @@ filesys_init (bool format)
 void
 filesys_done (void) 
 {
+  cache_flush (NULL);	
   free_map_close (&fs_map);
   free_map_close (&inode_map);
 }

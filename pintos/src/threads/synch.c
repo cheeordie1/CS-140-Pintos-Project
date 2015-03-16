@@ -482,6 +482,17 @@ lock_acquire_exclusive (struct shared_lock *sl)
   lock_release (&sl->slock);
 }
 
+bool
+lock_try_acquire_exclusive (struct shared_lock *sl)
+{
+  lock_acquire (&sl->slock);
+  if (sl->i != 0) 
+    return false;
+  sl->i = -1;
+  lock_release (&sl->slock);
+  return true;
+}
+
 /* Acquire shared access to a shared lock. */
 void
 lock_acquire_shared (struct shared_lock *sl)

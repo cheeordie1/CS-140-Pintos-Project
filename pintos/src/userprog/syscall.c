@@ -19,6 +19,7 @@
 #include "vm/frame.h"
 #ifdef FILESYS
 #include "filesys/directory.h"
+#include "filesys/inode.h"
 #endif
 
 #define STACK_LIMIT 0x00800000 
@@ -367,6 +368,8 @@ static void syscall_munmap (mapid_t mapid)
 static bool
 syscall_chdir (const char* dir)
 {
+  if (!is_valid_ptr (dir, strnlen(dir, PGSIZE)))
+    syscall_exit (-1);
   dir = NULL;
   return false;
 }
@@ -378,6 +381,8 @@ syscall_chdir (const char* dir)
 static bool
 syscall_mkdir (const char* dir)
 {
+  if (!is_valid_ptr (dir, strnlen(dir, PGSIZE)))
+    syscall_exit (-1);
   dir = NULL;
   return false;
 }
@@ -389,13 +394,16 @@ syscall_mkdir (const char* dir)
 static bool
 syscall_readdir (int fd, char* name)
 {
+  if (!is_valid_ptr (name, NAME_MAX))
+    syscall_exit (-1);
+  if (!syscall_isdir (fd))
+    return false;
   struct hash_elem *found_elem;
   found_elem = fdt_search (&thread_current ()->fd_hash, fd);
-  if (found_elem == NULL)
-    return false;
-  struct file *found_fd = 
-  hash_entry (found_elem, struct file_descriptor, elem)->file_;
-  return dir_readdir (found_fd, name); 
+  struct file *found_dir = hash_entry (found_elem, struct file_descriptor, 
+                                        elem)->file_;
+  struct dir *dir = (struct dir *) found_dir;
+  return dir_readdir (dir, name);
 }
 
 /* Returns true if fd represents a directory, false if it represents an
@@ -407,9 +415,9 @@ syscall_isdir (int fd)
   found_elem = fdt_search (&thread_current ()->fd_hash, fd);
   if (found_elem == NULL)
     return false;
-  struct file *found_fd = 
-  hash_entry (found_elem, struct file_descriptor, elem)->file_;
-  return found_fd->inode->dir;
+  struct file *found_file = hash_entry (found_elem, struct file_descriptor,
+                                        elem)->file_;
+  return inode_isdir (file_get_inode (found_file));
 }
 
 /* Returns the inode number of the inode associated with fd, which may
@@ -421,9 +429,9 @@ syscall_inumber (int fd)
   found_elem = fdt_search (&thread_current ()->fd_hash, fd);
   if (found_elem == NULL)
     return 0;
-  struct file *found_fd = hash_entry (found_elem, struct file_descriptor, 
+  struct file *found_file = hash_entry (found_elem, struct file_descriptor, 
                                       elem)->file_;
-  return found_fd->inumber;
+  return inode_inumber (file_get_inode (found_file));
 }
 
 #endif

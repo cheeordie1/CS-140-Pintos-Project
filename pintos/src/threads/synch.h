@@ -58,7 +58,7 @@ void lock_acquire_exclusive (struct shared_lock *sl);
 void lock_acquire_shared (struct shared_lock *sl);
 void lock_release_shared (struct shared_lock *sl);
 void lock_release_exclusive (struct shared_lock *sl);
-
+bool lock_try_acquire_exclusive (struct shared_lock *sl);
 /* Optimization barrier.
 
    The compiler will not reorder operations across an

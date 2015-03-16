@@ -6,6 +6,8 @@
 #include <stdint.h>
 #include "threads/fixed-point.h"
 #include "threads/vaddr.h"
+#include "filesys/cache.h"
+#include "filesys/file.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -161,8 +163,10 @@ struct thread
     void *saved_esp;                    /* Saved esp for page faults in kernel. */
 #endif
 
-#ifndef VM
-    char* pathname;
+#ifdef FILESYS
+  
+    int curr_dirnum;                    /* Fd of current_working directory. */
+
 #endif
 
     /* Owned by thread.c. */

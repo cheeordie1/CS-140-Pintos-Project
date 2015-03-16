@@ -8,6 +8,7 @@
 #include "userprog/gdt.h"
 #include "userprog/pagedir.h"
 #include "userprog/tss.h"
+#include "userprog/syscall.h"
 #include "filesys/directory.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
@@ -30,14 +31,24 @@
 struct proc_args 
   {
     char *file_name_;
+    char *relative_dir_path;
     struct relation *rel;
   };
 
 static thread_func start_process NO_RETURN;
-static bool load (const char *file_name, char *cmdline, void (**eip) (void), void **esp);
+//static void process_pass_reldir (char **rel_dir UNUSED);
+static bool load (const char *file_name, char *cmdline,
+                  void (**eip) (void), void **esp);
 
 const char *ignore_delimiters = " \t\r";
 
+/*static void
+process_pass_reldir (char **rel_dir UNUSED)
+{
+//  process_args.relative_dir_path = (NAME_MAX + 1) * num_dirs;
+  return;
+}
+*/
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
    before process_execute() returns.  Returns the new process's
@@ -62,6 +73,7 @@ process_execute (const char *file_name)
   rel->p_status = P_RUNNING;
   rel->c_status = P_LOADING;
   rel->w_status = -1;
+
   process_args.file_name_ = fn_copy;
   process_args.rel = rel;
 
@@ -93,6 +105,15 @@ start_process (void *process_args)
                               &cmdline);
   t->parent_in_r = ((struct proc_args *) process_args)->rel;
 
+/*  char root = '\0';
+  if (strcmp(((struct proc_args *) process_args)->relative_dir_path, &root)!=
+      0)
+    {
+      mkdir (((struct proc_args *) process_args)->relative_dir_path);
+      t->curr_dirnum = open (((struct proc_args *) 
+                             process_args)->relative_dir_path);
+    }
+*/
   struct intr_frame if_;
   bool success;
 
