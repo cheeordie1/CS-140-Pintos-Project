@@ -10,8 +10,7 @@
 
 J Evans jevans2@stanford.edu
 Nick Chee-awai cheeawai@stanford.edu
-Elizabeth Davis 
-FirstName LastName <email@domain.example>
+Elizabeth Davis eseraiah@stanford.edu 
 
 ---- PRELIMINARIES ----
 
@@ -211,6 +210,7 @@ access file data. Using both data structures gives us the best of both worlds.
 
 >> C3: Describe your implementation of write-behind.
 
+
 >> C4: Describe your implementation of read-ahead.
 
 ---- SYNCHRONIZATION ----
@@ -219,13 +219,37 @@ access file data. Using both data structures gives us the best of both worlds.
 >> buffer cache block, how are other processes prevented from evicting
 >> that block?
 
+We pin the segment with a shared spin lock-type algorithm. There are
+many processes who can read/write, but only one process can evict or fetch at 
+a time. There's a shared lock for this. So a process must have exclusive
+access to a cache segment to evict it.
+
 >> C6: During the eviction of a block from the cache, how are other
 >> processes prevented from attempting to access the block?
+
+Same answer as above, a shared lock. Only the current process trying to evict
+has access to the cache specific lock. We had a lot of trouble with this part
+because evicting a block was always followed by fetching in a new block. Going
+from evicting to fetching was not a problem, but going from fetching to 
+reading/writing is a race condtion. This is becaues we go from exclusive access
+to shared access, and there could have been processes waiting to access that
+block just unlocked and evict it before the process that just released 
+exclusive access uses the data. To avoid this race between releasing exculsive 
+and acquiring shared, the process spins in a loop checking to make sure no
+changes happened between switiching locks.
 
 ---- RATIONALE ----
 
 >> C7: Describe a file workload likely to benefit from buffer caching,
 >> and workloads likely to benefit from read-ahead and write-behind.
+
+buffer caching. Any small files that get called often would benefit because
+their data sectors can easily fit in the cache memory.
+
+read-ahead/write-behind. Any workload allocated with spacial locality would
+likely benefit here because adjecent sectors will get fetched in at once. This
+is especially true for large file sizes, where many different segments of
+file memory need to be accessed over the course of runtime.
 
 			   SURVEY QUESTIONS
 			   ================
